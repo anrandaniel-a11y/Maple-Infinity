@@ -3,7 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
-import { generateVolume, getHighestBlockY } from './src/utils/mapGen.js';
+import { generateVolume, getHighestBlockY, getTerrainHeight } from './src/utils/mapGen.js';
 
 function dist2(v: any, w: any) {
   return Math.pow(v.x - w.x, 2) + Math.pow(v.y - w.y, 2) + Math.pow(v.z - w.z, 2);
@@ -15,17 +15,6 @@ function distToSegmentSquared(p: any, v: any, w: any) {
   let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y) + (p.z - v.z) * (w.z - v.z)) / l2;
   t = Math.max(0, Math.min(1, t));
   return dist2(p, { x: v.x + t * (w.x - v.x), y: v.y + t * (w.y - v.y), z: v.z + t * (w.z - v.z) });
-}
-
-function getTerrainHeight(x: number, z: number) {
-  let y = Math.sin(x * 0.02) * Math.cos(z * 0.02) * 15;
-  y += Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
-  y += Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2;
-  const distFromCenter = Math.sqrt(x*x + z*z);
-  if (distFromCenter < 60) {
-    y *= Math.pow(distFromCenter / 60, 2);
-  }
-  return y;
 }
 
 function checkHit(player: any, from: number[], to: number[]) {
@@ -541,7 +530,9 @@ async function startServer() {
         io.to(roomId).emit('scoreUpdated', { id: shooterId, score: room.players[shooterId].score });
         if (room.players[shooterId].score % 5 === 0) {
           room.currentMapIndex = (room.currentMapIndex + 1) % TOTAL_MAPS;
-          io.to(roomId).emit('mapChanged', room.currentMapIndex);
+          room.seed = Math.floor(Math.random() * 1000000);
+          room.volume = generateVolume(room.seed);
+          io.to(roomId).emit('mapChanged', { mapIndex: room.currentMapIndex, seed: room.seed });
         }
       }
     } else {

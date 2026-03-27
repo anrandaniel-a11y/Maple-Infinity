@@ -1,6 +1,6 @@
 import { useGameStore } from '../../store/gameStore';
 import { Joystick } from 'react-joystick-component';
-import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp } from 'lucide-react';
+import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean }) {
@@ -9,6 +9,14 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const players = useGameStore((state) => state.players);
   const sensitivity = useGameStore((state) => state.sensitivity);
   const setSensitivity = useGameStore((state) => state.setSensitivity);
+  const renderDistance = useGameStore((state) => state.renderDistance);
+  const setRenderDistance = useGameStore((state) => state.setRenderDistance);
+  const dynamicResolution = useGameStore((state) => state.dynamicResolution);
+  const setDynamicResolution = useGameStore((state) => state.setDynamicResolution);
+  const showFps = useGameStore((state) => state.showFps);
+  const setShowFps = useGameStore((state) => state.setShowFps);
+  const fpsLimit = useGameStore((state) => state.fpsLimit);
+  const setFpsLimit = useGameStore((state) => state.setFpsLimit);
   const adminState = useGameStore((state) => state.adminState);
   const setAdminState = useGameStore((state) => state.setAdminState);
   const gameMode = useGameStore((state) => state.gameMode);
@@ -16,6 +24,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const boss = useGameStore((state) => state.boss);
   const victory = useGameStore((state) => state.victory);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Force re-render at 30fps to update radar and HUD since player movement mutates state directly
   const [, setTick] = useState(0);
@@ -100,19 +109,18 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
           </div>
         )}
         
-        {/* Settings */}
-        <div 
-          className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl pointer-events-auto"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">Sensitivity: {sensitivity.toFixed(1)}</label>
-          <input 
-            type="range" 
-            min="0.1" max="10" step="0.1" 
-            value={sensitivity} 
-            onChange={(e) => setSensitivity(parseFloat(e.target.value))}
-            className="w-full accent-cyan-400"
-          />
+        {/* Settings Button */}
+        <div className="pointer-events-auto">
+          <button 
+            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl w-full flex items-center justify-between text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+            onClick={() => setSettingsOpen(true)}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2">
+              <Settings size={16} />
+              <span className="font-bold uppercase tracking-widest text-sm">Settings</span>
+            </div>
+          </button>
         </div>
 
         {/* Admin Panel */}
@@ -313,21 +321,97 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
               stop={() => window.dispatchEvent(new Event('joystickStop'))} 
             />
           </div>
-          <div className="absolute bottom-8 right-8 pointer-events-auto flex gap-4">
+          <div className="absolute bottom-[5vmin] right-[5vmin] pointer-events-auto flex gap-[3vmin] items-end">
             <button 
-              className="w-16 h-16 rounded-full bg-cyan-500/50 border-2 border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-4"
-              onPointerDown={() => window.dispatchEvent(new Event('mobileDash'))}
+              className="w-[15vmin] h-[15vmin] max-w-16 max-h-16 rounded-full bg-cyan-500/50 border-2 border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-[2vmin]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new Event('mobileDash')); }}
             >
-              <Zap className="text-white" />
+              <Zap className="text-white w-1/2 h-1/2" />
             </button>
             <button 
-              className="w-20 h-20 rounded-full bg-fuchsia-500/50 border-2 border-fuchsia-400 shadow-[0_0_20px_rgba(255,0,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none"
-              onPointerDown={() => window.dispatchEvent(new Event('mobileShoot'))}
+              className="w-[20vmin] h-[20vmin] max-w-20 max-h-20 rounded-full bg-fuchsia-500/50 border-2 border-fuchsia-400 shadow-[0_0_20px_rgba(255,0,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none"
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new Event('mobileShoot')); }}
             >
-              <Crosshair className="text-white" />
+              <Crosshair className="text-white w-1/2 h-1/2" />
             </button>
           </div>
         </>
+      )}
+
+      {/* Settings Modal */}
+      {settingsOpen && (
+        <div 
+          className="absolute inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center pointer-events-auto"
+          onPointerDown={() => setSettingsOpen(false)}
+        >
+          <div 
+            className="bg-gray-900 border border-cyan-500/50 rounded-2xl p-6 w-full max-w-md shadow-[0_0_30px_rgba(0,255,255,0.1)]"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-widest">Settings</h2>
+              <button 
+                onClick={() => setSettingsOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-6">
+              <div>
+                <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">Sensitivity: {sensitivity.toFixed(1)}</label>
+                <input 
+                  type="range" 
+                  min="0.1" max="10" step="0.1" 
+                  value={sensitivity} 
+                  onChange={(e) => setSensitivity(parseFloat(e.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">Render Distance: {renderDistance}</label>
+                <input 
+                  type="range" 
+                  min="20" max="500" step="10" 
+                  value={renderDistance} 
+                  onChange={(e) => setRenderDistance(parseInt(e.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <div>
+                <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">FPS Limit: {fpsLimit === 0 ? 'Unlimited' : fpsLimit}</label>
+                <input 
+                  type="range" 
+                  min="0" max="144" step="1" 
+                  value={fpsLimit} 
+                  onChange={(e) => setFpsLimit(parseInt(e.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-widest cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={dynamicResolution}
+                  onChange={(e) => setDynamicResolution(e.target.checked)}
+                  className="accent-cyan-400"
+                />
+                Dynamic Resolution
+              </label>
+              <label className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-widest cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={showFps}
+                  onChange={(e) => setShowFps(e.target.checked)}
+                  className="accent-cyan-400"
+                />
+                Show FPS
+              </label>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -4,10 +4,9 @@ import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider, InstancedRigidBodies } from '@react-three/rapier';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
-import { generateVolume, VOXEL_SIZE, GRID_W, GRID_H, GRID_D } from '../../utils/mapGen';
+import { generateVolume, getTerrainHeight, VOXEL_SIZE, GRID_W, GRID_H, GRID_D } from '../../utils/mapGen';
 
 export function Map() {
-  const mapIndex = useGameStore((state) => state.mapIndex);
   const gameMode = useGameStore((state) => state.gameMode);
 
   return (
@@ -16,10 +15,6 @@ export function Map() {
       <Terrain />
 
       <RandomObstacles />
-
-      {mapIndex === 0 && <MapLayout1 />}
-      {mapIndex === 1 && <MapLayout2 />}
-      {mapIndex === 2 && <MapLayout3 />}
 
       {gameMode === 'pve' && (
         <group>
@@ -170,16 +165,7 @@ const generateTerrainGeometry = () => {
     const x = pos.getX(i);
     const z = pos.getZ(i);
     
-    // Create hills and valleys using layered sine waves
-    let y = Math.sin(x * 0.02) * Math.cos(z * 0.02) * 15;
-    y += Math.sin(x * 0.005) * Math.cos(z * 0.005) * 40;
-    y += Math.sin(x * 0.1) * Math.cos(z * 0.1) * 2; // small bumps
-    
-    // Flatten the center area so players don't spawn inside a steep hill
-    const distFromCenter = Math.sqrt(x*x + z*z);
-    if (distFromCenter < 60) {
-      y *= (distFromCenter / 60) ** 2; // Smooth transition
-    }
+    const y = getTerrainHeight(x, z);
 
     pos.setY(i, y);
     
@@ -193,6 +179,8 @@ const generateTerrainGeometry = () => {
   }
   
   geo.computeVertexNormals();
+  geo.computeBoundingSphere();
+  geo.computeBoundingBox();
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   
   return geo;
@@ -362,8 +350,12 @@ function ObstacleChunk({ data }: { data: any }) {
   const { matrices, wireframeMatrices, colorsArray } = data;
 
   useEffect(() => {
-    if (meshRef.current) meshRef.current.computeBoundingSphere();
-    if (wireframeRef.current) wireframeRef.current.computeBoundingSphere();
+    if (meshRef.current) {
+      meshRef.current.computeBoundingSphere();
+    }
+    if (wireframeRef.current) {
+      wireframeRef.current.computeBoundingSphere();
+    }
   }, [matrices]);
 
   if (data.positions.length === 0) return null;
@@ -379,7 +371,7 @@ function ObstacleChunk({ data }: { data: any }) {
           />
         ))}
       </RigidBody>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, data.positions.length]} castShadow receiveShadow>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, data.positions.length]} castShadow receiveShadow frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[matrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
@@ -400,7 +392,7 @@ function ObstacleChunk({ data }: { data: any }) {
           }}
         />
       </instancedMesh>
-      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]}>
+      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[wireframeMatrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
@@ -415,115 +407,4 @@ function ObstacleChunk({ data }: { data: any }) {
   );
 }
 
-function MapLayout1() {
-  return (
-    <group>
-      {/* Center piece */}
-      <Obstacle position={[0, 8, 0]} size={[6, 16, 6]} color="#00ffff" />
-      <Obstacle position={[0, 2, 0]} size={[12, 4, 12]} color="#ff00ff" />
-      
-      {/* Outer walls / Cover */}
-      <Obstacle position={[-20, 6, -20]} size={[4, 12, 4]} color="#ffff00" />
-      <Obstacle position={[20, 6, -20]} size={[4, 12, 4]} color="#00ff00" />
-      <Obstacle position={[-20, 6, 20]} size={[4, 12, 4]} color="#00ff00" />
-      <Obstacle position={[20, 6, 20]} size={[4, 12, 4]} color="#ffff00" />
 
-      {/* Long corridors */}
-      <Obstacle position={[-10, 4, -25]} size={[16, 8, 2]} color="#ff00ff" />
-      <Obstacle position={[10, 4, -25]} size={[16, 8, 2]} color="#00ffff" />
-      <Obstacle position={[-10, 4, 25]} size={[16, 8, 2]} color="#00ffff" />
-      <Obstacle position={[10, 4, 25]} size={[16, 8, 2]} color="#ff00ff" />
-
-      <Obstacle position={[-25, 4, -10]} size={[2, 8, 16]} color="#ffff00" />
-      <Obstacle position={[-25, 4, 10]} size={[2, 8, 16]} color="#00ff00" />
-      <Obstacle position={[25, 4, -10]} size={[2, 8, 16]} color="#00ff00" />
-      <Obstacle position={[25, 4, 10]} size={[2, 8, 16]} color="#ffff00" />
-
-      {/* Scatter blocks */}
-      <Obstacle position={[-12, 3, -12]} size={[3, 6, 3]} color="#ff00ff" />
-      <Obstacle position={[12, 3, 12]} size={[3, 6, 3]} color="#00ffff" />
-      <Obstacle position={[-12, 3, 12]} size={[3, 6, 3]} color="#ffff00" />
-      <Obstacle position={[12, 3, -12]} size={[3, 6, 3]} color="#00ff00" />
-    </group>
-  );
-}
-
-function MapLayout2() {
-  return (
-    <group>
-      {/* The Maze */}
-      <Obstacle position={[0, 6, 0]} size={[2, 12, 20]} color="#ff00ff" />
-      <Obstacle position={[-10, 6, 10]} size={[20, 12, 2]} color="#00ffff" />
-      <Obstacle position={[10, 6, -10]} size={[20, 12, 2]} color="#ffff00" />
-      
-      <Obstacle position={[-20, 6, 0]} size={[2, 12, 30]} color="#00ff00" />
-      <Obstacle position={[20, 6, 0]} size={[2, 12, 30]} color="#ff00ff" />
-      
-      <Obstacle position={[0, 6, -20]} size={[30, 12, 2]} color="#00ffff" />
-      <Obstacle position={[0, 6, 20]} size={[30, 12, 2]} color="#ffff00" />
-
-      {/* Inner cover */}
-      <Obstacle position={[-5, 3, -5]} size={[2, 6, 2]} color="#00ff00" />
-      <Obstacle position={[5, 3, 5]} size={[2, 6, 2]} color="#ff00ff" />
-      
-      {/* High ground */}
-      <Obstacle position={[-15, 4, -15]} size={[6, 8, 6]} color="#00ffff" />
-      <Obstacle position={[15, 4, 15]} size={[6, 8, 6]} color="#ffff00" />
-    </group>
-  );
-}
-
-function MapLayout3() {
-  return (
-    <group>
-      {/* The Arena (Open center, lots of small cover) */}
-      <Obstacle position={[0, 0.5, 0]} size={[20, 1, 20]} color="#00ffff" />
-      
-      {/* Pillars */}
-      <Obstacle position={[-8, 8, -8]} size={[2, 16, 2]} color="#ff00ff" />
-      <Obstacle position={[8, 8, -8]} size={[2, 16, 2]} color="#ffff00" />
-      <Obstacle position={[-8, 8, 8]} size={[2, 16, 2]} color="#00ff00" />
-      <Obstacle position={[8, 8, 8]} size={[2, 16, 2]} color="#00ffff" />
-
-      {/* Ring walls */}
-      <Obstacle position={[-15, 4, 0]} size={[2, 8, 10]} color="#ff00ff" />
-      <Obstacle position={[15, 4, 0]} size={[2, 8, 10]} color="#ffff00" />
-      <Obstacle position={[0, 4, -15]} size={[10, 8, 2]} color="#00ff00" />
-      <Obstacle position={[0, 4, 15]} size={[10, 8, 2]} color="#00ffff" />
-
-      {/* Ramps (approximated with boxes for now) */}
-      <Obstacle position={[-12, 2, -12]} size={[4, 4, 4]} color="#ff00ff" />
-      <Obstacle position={[12, 2, 12]} size={[4, 4, 4]} color="#ffff00" />
-    </group>
-  );
-}
-
-const obstacleGeo = new THREE.BoxGeometry(1, 1, 1);
-
-const obstacleMaterials: Record<string, THREE.MeshStandardMaterial> = {};
-const obstacleWireframeMaterials: Record<string, THREE.MeshBasicMaterial> = {};
-
-function getObstacleMaterial(color: string) {
-  if (!obstacleMaterials[color]) {
-    obstacleMaterials[color] = new THREE.MeshStandardMaterial({ color: "#111", emissive: color, emissiveIntensity: 0.5, roughness: 0.2, metalness: 0.8 });
-  }
-  return obstacleMaterials[color];
-}
-
-function getObstacleWireframeMaterial(color: string) {
-  if (!obstacleWireframeMaterials[color]) {
-    obstacleWireframeMaterials[color] = new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true, opacity: 0.3 });
-  }
-  return obstacleWireframeMaterials[color];
-}
-
-function Obstacle({ position, size, color }: { position: [number, number, number], size: [number, number, number], color: string }) {
-  return (
-    <RigidBody type="fixed" position={position}>
-      <CuboidCollider args={[size[0] / 2, size[1] / 2, size[2] / 2]} />
-      <mesh castShadow receiveShadow scale={size} geometry={obstacleGeo} material={getObstacleMaterial(color)} />
-      {/* Neon Edge Highlights */}
-      <mesh scale={[size[0] + 0.05, size[1] + 0.05, size[2] + 0.05]} geometry={obstacleGeo} material={getObstacleWireframeMaterial(color)} />
-    </RigidBody>
-  );
-}

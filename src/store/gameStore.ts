@@ -54,6 +54,10 @@ interface GameStore {
   explosions: any[];
   myId: string | null;
   sensitivity: number;
+  renderDistance: number;
+  dynamicResolution: boolean;
+  showFps: boolean;
+  fpsLimit: number;
   mapIndex: number;
   seed: number;
   gameMode: 'pvp' | 'pve';
@@ -67,6 +71,10 @@ interface GameStore {
   connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
   disconnect: () => void;
   setSensitivity: (val: number) => void;
+  setRenderDistance: (val: number) => void;
+  setDynamicResolution: (val: boolean) => void;
+  setShowFps: (val: boolean) => void;
+  setFpsLimit: (val: number) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
   setBoss: (boss: { id: string, health: number, maxHealth: number } | null) => void;
@@ -93,6 +101,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   explosions: [],
   myId: null,
   sensitivity: 1.0,
+  renderDistance: 100,
+  dynamicResolution: true,
+  showFps: false,
+  fpsLimit: 0,
   mapIndex: 0,
   seed: 0,
   gameMode: 'pvp',
@@ -104,6 +116,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     flying: false,
     noclip: false,
   },
+
+  setSensitivity: (val) => set({ sensitivity: val }),
+  setRenderDistance: (val) => set({ renderDistance: val }),
+  setDynamicResolution: (val) => set({ dynamicResolution: val }),
+  setShowFps: (val) => set({ showFps: val }),
+  setFpsLimit: (val) => set({ fpsLimit: val }),
 
   boss: null,
   setBoss: (boss) => set({ boss }),
@@ -214,8 +232,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }, 500); // Explosion lasts 500ms
     });
 
-    socket.on('mapChanged', (mapIndex) => {
-      set({ mapIndex });
+    socket.on('mapChanged', (data) => {
+      if (typeof data === 'number') {
+        set({ mapIndex: data });
+      } else {
+        set({ mapIndex: data.mapIndex, seed: data.seed });
+      }
     });
 
     socket.on('playerJoined', (player) => {

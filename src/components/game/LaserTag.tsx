@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/gameStore';
@@ -8,6 +8,42 @@ import { LocalPlayer } from './LocalPlayer';
 import { RemotePlayer } from './RemotePlayer';
 import { UI } from './UI';
 import { Entities } from './Entities';
+
+import { PerformanceMonitor, Stats } from '@react-three/drei';
+
+function GameSettings() {
+  const { camera, invalidate, frameloop } = useThree();
+  const renderDistance = useGameStore((state) => state.renderDistance);
+  const fpsLimit = useGameStore((state) => state.fpsLimit);
+
+  useEffect(() => {
+    camera.far = renderDistance;
+    camera.updateProjectionMatrix();
+  }, [renderDistance, camera]);
+
+  useEffect(() => {
+    if (fpsLimit <= 0 || frameloop !== 'demand') return;
+
+    let frameId: number;
+    let lastTime = performance.now();
+
+    const loop = (time: number) => {
+      frameId = requestAnimationFrame(loop);
+      const delta = time - lastTime;
+      const interval = 1000 / fpsLimit;
+
+      if (delta >= interval) {
+        lastTime = time - (delta % interval);
+        invalidate();
+      }
+    };
+
+    frameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frameId);
+  }, [fpsLimit, invalidate, frameloop]);
+
+  return null;
+}
 
 const laserGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 
@@ -108,6 +144,11 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const myId = useGameStore((state) => state.myId);
+  const renderDistance = useGameStore((state) => state.renderDistance);
+  const dynamicResolution = useGameStore((state) => state.dynamicResolution);
+  const fpsLimit = useGameStore((state) => state.fpsLimit);
+  const showFps = useGameStore((state) => state.showFps);
+  const [dpr, setDpr] = useState(1);
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -127,9 +168,19 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
 
   return (
     <div className="w-full h-screen bg-black relative overflow-hidden touch-none">
-      <Canvas shadows={{ type: THREE.PCFShadowMap }} camera={{ fov: 75 }}>
+      <Canvas 
+        shadows={{ type: THREE.PCFShadowMap }} 
+        camera={{ fov: 75, far: renderDistance }} 
+        dpr={dynamicResolution ? dpr : 1}
+        frameloop={fpsLimit > 0 ? 'demand' : 'always'}
+      >
+        <GameSettings />
+        {showFps && <Stats />}
+        {dynamicResolution && (
+          <PerformanceMonitor onIncline={() => setDpr(2)} onDecline={() => setDpr(0.5)} />
+        )}
         <color attach="background" args={['#050505']} />
-        <fog attach="fog" args={['#050505', 10, 50]} />
+        <fog attach="fog" args={['#050505', renderDistance * 0.2, renderDistance]} />
         
         <ambientLight intensity={0.5} />
         <directionalLight castShadow position={[10, 20, 10]} intensity={0.8} />
