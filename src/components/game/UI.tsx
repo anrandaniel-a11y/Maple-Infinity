@@ -14,6 +14,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const gameMode = useGameStore((state) => state.gameMode);
   const interactable = useGameStore((state) => state.interactable);
   const boss = useGameStore((state) => state.boss);
+  const victory = useGameStore((state) => state.victory);
   const [adminOpen, setAdminOpen] = useState(false);
 
   // Force re-render at 30fps to update radar and HUD since player movement mutates state directly
@@ -55,6 +56,20 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
             <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-mono font-bold mix-blend-difference">
               {Math.ceil(boss.health)} / {boss.maxHealth}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Victory Overlay */}
+      {victory && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm z-50 pointer-events-none animate-in fade-in duration-1000">
+          <div className="text-center">
+            <h1 className="text-7xl font-black text-green-400 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(74,222,128,0.5)] animate-bounce">
+              Victory
+            </h1>
+            <p className="text-2xl text-white font-mono uppercase tracking-widest opacity-80">
+              System Overlord Defeated
+            </p>
           </div>
         </div>
       )}

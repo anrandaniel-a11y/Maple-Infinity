@@ -50,6 +50,46 @@ function Lasers() {
   );
 }
 
+function Shockwave({ sw }: { sw: any }) {
+  const ref = useRef<THREE.Mesh>(null);
+  const [opacity, setOpacity] = useState(0.5);
+
+  useEffect(() => {
+    let startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = elapsed / 1000;
+      if (progress >= 1) {
+        clearInterval(interval);
+        return;
+      }
+      setOpacity(0.5 * (1 - progress));
+      if (ref.current) {
+        ref.current.scale.setScalar(progress * sw.radius * 2);
+      }
+    }, 16);
+    return () => clearInterval(interval);
+  }, [sw.radius]);
+
+  return (
+    <mesh ref={ref} position={[sw.x, sw.y, sw.z]}>
+      <sphereGeometry args={[1, 32, 32]} />
+      <meshBasicMaterial color="#ff00ff" transparent opacity={opacity} wireframe />
+    </mesh>
+  );
+}
+
+function Shockwaves() {
+  const shockwaves = useGameStore((state) => state.shockwaves);
+  return (
+    <>
+      {shockwaves.map((sw) => (
+        <Shockwave key={sw.id} sw={sw} />
+      ))}
+    </>
+  );
+}
+
 function RemotePlayers() {
   const players = useGameStore((state) => state.players);
   const myId = useGameStore((state) => state.myId);
@@ -103,6 +143,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
 
         {/* Lasers */}
         <Lasers />
+        <Shockwaves />
       </Canvas>
 
       <UI isMobile={isMobile} isAdmin={isAdmin} />

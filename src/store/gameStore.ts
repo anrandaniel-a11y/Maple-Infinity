@@ -24,6 +24,14 @@ interface LaserState {
   color: string;
 }
 
+interface ShockwaveState {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+}
+
 interface EntityState {
   id: string;
   type: 'LIGHTBULB' | 'DRONE' | 'MECH' | 'BOSS';
@@ -40,6 +48,7 @@ interface GameStore {
   players: Record<string, PlayerState>;
   entities: Record<string, EntityState>;
   lasers: LaserState[];
+  shockwaves: ShockwaveState[];
   weapons: Record<string, any>;
   medkits: Record<string, any>;
   explosions: any[];
@@ -59,6 +68,7 @@ interface GameStore {
   disconnect: () => void;
   setSensitivity: (val: number) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
+  victory: boolean;
   setBoss: (boss: { id: string, health: number, maxHealth: number } | null) => void;
   updateBossHealth: (health: number) => void;
   setInteractable: (interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null) => void;
@@ -68,6 +78,8 @@ interface GameStore {
   removeLaser: (id: string) => void;
   addExplosion: (exp: any) => void;
   removeExplosion: (id: string) => void;
+  addShockwave: (sw: ShockwaveState) => void;
+  removeShockwave: (id: string) => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -75,6 +87,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   players: {},
   entities: {},
   lasers: [],
+  shockwaves: [],
   weapons: {},
   medkits: {},
   explosions: [],
@@ -84,6 +97,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   seed: 0,
   gameMode: 'pvp',
   difficulty: 'normal',
+  victory: false,
   interactable: null,
   adminState: {
     infiniteHealth: false,
@@ -123,7 +137,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     socket.on('bossDefeated', () => {
-      set({ boss: null });
+      set({ boss: null, victory: true });
+      setTimeout(() => set({ victory: false }), 10000);
     });
 
     socket.on('entitySpawned', (entity) => {
@@ -239,6 +254,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       }, 100); // Laser visual lasts 100ms
     });
 
+    socket.on('shockwave', (sw) => {
+      const id = Math.random().toString(36).substring(7);
+      get().addShockwave({ ...sw, id });
+      setTimeout(() => {
+        get().removeShockwave(id);
+      }, 1000);
+    });
+
     socket.on('playerHit', ({ id, health, bleedingTicks }) => {
       set((state) => {
         if (!state.players[id]) return state;
@@ -297,5 +320,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   removeExplosion: (id) => {
     set((state) => ({ explosions: state.explosions.filter(e => e.id !== id) }));
+  },
+
+  addShockwave: (sw) => {
+    set((state) => ({ shockwaves: [...state.shockwaves, sw] }));
+  },
+
+  removeShockwave: (id) => {
+    set((state) => ({ shockwaves: state.shockwaves.filter(s => s.id !== id) }));
   }
 }));

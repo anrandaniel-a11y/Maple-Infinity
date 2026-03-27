@@ -215,7 +215,8 @@ async function startServer() {
                 lastAttack: 0,
                 isPreparingAttack: false,
                 attackStartTime: 0,
-                invulnerableUntil: 0
+                invulnerableUntil: 0,
+                attackType: 'SPREAD'
               };
               io.to(roomId).emit('entitySpawned', room.entities[bossId]);
               io.to(roomId).emit('bossSpawned', room.entities[bossId]);
@@ -443,32 +444,62 @@ async function startServer() {
                 entity.y = Math.max(terrainY, blockY) + 15; // Hover
               }
 
-              const attackCooldown = 2000;
+              const attackCooldown = 2500;
               if (now - entity.lastAttack > attackCooldown) {
                 if (!entity.isPreparingAttack) {
                   entity.isPreparingAttack = true;
                   entity.attackStartTime = now;
                   entity.attackTarget = [closestPlayer.x, closestPlayer.y, closestPlayer.z];
-                } else if (now - entity.attackStartTime > 1000) {
+                  // Cycle through attack types
+                  const attacks = ['SPREAD', 'BARRAGE', 'SHOCKWAVE', 'SUMMON'];
+                  entity.attackType = attacks[Math.floor(Math.random() * attacks.length)];
+                  io.to(roomId).emit('chatMessage', { sender: 'BOSS', text: `PREPARING ${entity.attackType}...`, color: '#ff00ff' });
+                } else if (now - entity.attackStartTime > 1500) {
                   entity.isPreparingAttack = false;
                   entity.lastAttack = now;
                   
-                  for (let i = -1; i <= 1; i++) {
-                    const angleOffset = i * 0.2;
-                    const cosA = Math.cos(angleOffset);
-                    const sinA = Math.sin(angleOffset);
-                    
-                    const targetX = entity.x + (entity.attackTarget[0] - entity.x) * cosA - (entity.attackTarget[2] - entity.z) * sinA;
-                    const targetZ = entity.z + (entity.attackTarget[0] - entity.x) * sinA + (entity.attackTarget[2] - entity.z) * cosA;
-                    const to = [targetX, entity.attackTarget[1], targetZ];
-                    
-                    io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to, color: '#ff00ff' });
-                    
-                    for (const targetId in room.players) {
-                      if (checkHit(room.players[targetId], [entity.x, entity.y, entity.z], to)) {
-                        applyDamage(roomId, targetId, 'entity', 50);
+                  if (entity.attackType === 'SPREAD') {
+                    for (let i = -1; i <= 1; i++) {
+                      const angleOffset = i * 0.2;
+                      const cosA = Math.cos(angleOffset);
+                      const sinA = Math.sin(angleOffset);
+                      
+                      const targetX = entity.x + (entity.attackTarget[0] - entity.x) * cosA - (entity.attackTarget[2] - entity.z) * sinA;
+                      const targetZ = entity.z + (entity.attackTarget[0] - entity.x) * sinA + (entity.attackTarget[2] - entity.z) * cosA;
+                      const to = [targetX, entity.attackTarget[1], targetZ];
+                      
+                      io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to, color: '#ff00ff' });
+                      
+                      for (const targetId in room.players) {
+                        if (checkHit(room.players[targetId], [entity.x, entity.y, entity.z], to)) {
+                          applyDamage(roomId, targetId, 'entity', 50);
+                        }
                       }
                     }
+                  } else if (entity.attackType === 'BARRAGE') {
+                    // Fast sequence of shots
+                    for (let i = 0; i < 8; i++) {
+                      setTimeout(() => {
+                        if (!room.entities[entity.id]) return;
+                        const p = Object.values(room.players)[Math.floor(Math.random() * Object.values(room.players).length)];
+                        if (!p) return;
+                        const to = [p.x, p.y, p.z];
+                        io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to, color: '#ff0000' });
+                        if (checkHit(p, [entity.x, entity.y, entity.z], to)) {
+                          applyDamage(roomId, p.id, 'entity', 30);
+                        }
+                      }, i * 150);
+                    }
+                  } else if (entity.attackType === 'SHOCKWAVE') {
+                    io.to(roomId).emit('shockwave', { x: entity.x, y: entity.y, z: entity.z, radius: 30 });
+                    for (const p of Object.values(room.players)) {
+                      const d = Math.sqrt((p.x - entity.x)**2 + (p.y - entity.y)**2 + (p.z - entity.z)**2);
+                      if (d < 30) {
+                        applyDamage(roomId, p.id, 'entity', 80);
+                      }
+                    }
+                  } else if (entity.attackType === 'SUMMON') {
+                    spawnBossMinions(room, roomId, 3);
                   }
                 }
               } else {
