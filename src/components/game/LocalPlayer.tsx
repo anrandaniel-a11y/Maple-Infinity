@@ -6,8 +6,8 @@ import { PointerLockControls } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
 
-const SPEED = 12;
-const JUMP_FORCE = 5;
+const BASE_SPEED = 12;
+const JUMP_FORCE = 8; // Increased to match new gravity scale (2.5)
 
 const direction = new Vector3();
 const frontVector = new Vector3();
@@ -57,6 +57,10 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
             socket.emit('pickupWeapon', interactable.id);
           }
         }
+      }
+      
+      if (e.code === 'KeyF') {
+        window.dispatchEvent(new CustomEvent('jumpPadBoost', { detail: { power: 32 } }));
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -173,6 +177,23 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       }
     };
 
+    const handleJumpPadBoost = (e: any) => {
+      if (bodyRef.current) {
+        const pos = bodyRef.current.translation();
+        rayOrigin.x = pos.x;
+        rayOrigin.y = pos.y - 0.91;
+        rayOrigin.z = pos.z;
+        const ray = new rapier.Ray(rayOrigin, rayDir);
+        const hit = world.castRay(ray, 0.2, true);
+        const grounded = hit && hit.timeOfImpact < 0.2;
+
+        if (grounded) {
+          const currentVel = bodyRef.current.linvel();
+          bodyRef.current.setLinvel({ x: currentVel.x, y: e.detail.power, z: currentVel.z }, true);
+        }
+      }
+    };
+
     const handleMobileInteract = () => {
       const interactable = useGameStore.getState().interactable;
       if (interactable && socket) {
@@ -187,6 +208,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     window.addEventListener('mobileDash', handleMobileDash);
     window.addEventListener('mobileInteract', handleMobileInteract);
     window.addEventListener('adminTeleport', handleAdminTeleport);
+    window.addEventListener('jumpPadBoost', handleJumpPadBoost);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
@@ -201,6 +223,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       window.removeEventListener('mobileDash', handleMobileDash);
       window.removeEventListener('mobileInteract', handleMobileInteract);
       window.removeEventListener('adminTeleport', handleAdminTeleport);
+      window.removeEventListener('jumpPadBoost', handleJumpPadBoost);
     };
   }, [isMobile, socket, myId, camera, scene]);
 
@@ -284,26 +307,26 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     if (adminState.flying) {
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      direction.multiplyScalar(SPEED).applyEuler(camera.rotation);
+      direction.multiplyScalar(adminState.speed || BASE_SPEED).applyEuler(camera.rotation);
       
       bodyRef.current.setGravityScale(0, true);
       let verticalVelocity = direction.y;
-      if (keysRef.current.space) verticalVelocity += SPEED;
-      if (keysRef.current.shift) verticalVelocity -= SPEED;
+      if (keysRef.current.space) verticalVelocity += (adminState.speed || BASE_SPEED);
+      if (keysRef.current.shift) verticalVelocity -= (adminState.speed || BASE_SPEED);
       bodyRef.current.setLinvel({ x: direction.x, y: verticalVelocity, z: direction.z }, true);
     } else {
       eulerY.set(0, camera.rotation.y, 0, 'YXZ');
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      direction.multiplyScalar(SPEED).applyEuler(eulerY);
+      direction.multiplyScalar(adminState.speed || BASE_SPEED).applyEuler(eulerY);
       
       // Jump
       rayOrigin.x = pos.x;
-      rayOrigin.y = pos.y;
+      rayOrigin.y = pos.y - 0.91;
       rayOrigin.z = pos.z;
       const ray = new rapier.Ray(rayOrigin, rayDir);
-      const hit = world.castRay(ray, 1.1, true);
-      const grounded = hit && hit.timeOfImpact < 1.0;
+      const hit = world.castRay(ray, 0.2, true);
+      const grounded = hit && hit.timeOfImpact < 0.2;
 
       if (keysRef.current.space && grounded) {
         bodyRef.current.applyImpulse({ x: 0, y: JUMP_FORCE, z: 0 }, true);
@@ -328,16 +351,18 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
             dashDir.set(0, 0, -1); // Fallback if looking straight down
           }
           
-          dashVelocity.current.copy(dashDir).multiplyScalar(87); // Dash burst speed
+          const dashBurst = grounded ? 87 : 110;
+          dashVelocity.current.copy(dashDir).multiplyScalar(dashBurst); // Dash burst speed
         }
         mobileDashRef.current = false;
       }
 
-      // Apply dash decay
-      dashVelocity.current.multiplyScalar(0.95); // Friction
+      // Apply dash decay (less friction in air)
+      const friction = grounded ? 0.92 : 0.97;
+      dashVelocity.current.multiplyScalar(friction); 
       direction.add(dashVelocity.current);
 
-      bodyRef.current.setGravityScale(1, true);
+      bodyRef.current.setGravityScale(2.5, true);
       bodyRef.current.setLinvel({ x: direction.x, y: linvel.y, z: direction.z }, true);
     }
 
@@ -397,7 +422,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         camera
       )}
 
-      <RigidBody ref={bodyRef} colliders={false} mass={1} type="dynamic" position={[me?.x || 0, me?.y || 100, me?.z || 0]} enabledRotations={[false, false, false]} friction={0} restitution={0} ccd>
+      <RigidBody ref={bodyRef} colliders={false} mass={1} type="dynamic" position={[me?.x || 0, me?.y || 100, me?.z || 0]} enabledRotations={[false, false, false]} friction={0} restitution={0} ccd gravityScale={2.5}>
         <CapsuleCollider args={[0.5, 0.4]} friction={0} restitution={0} sensor={adminState.noclip} />
         <mesh visible={false} userData={{ playerId: myId }}>
           <capsuleGeometry args={[0.4, 1, 4, 8]} />

@@ -123,6 +123,16 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
           </button>
         </div>
 
+        {!isMobile && (
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-1 mt-2">
+            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">WASD</span> Move</div>
+            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">SPACE</span> Jump</div>
+            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">SHIFT</span> Dash</div>
+            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">F</span> Boost</div>
+            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">CLICK</span> Shoot</div>
+          </div>
+        )}
+
         {/* Admin Panel */}
         {isAdmin && (
           <div 
@@ -178,6 +188,17 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                   Noclip
                 </label>
                 
+                <div className="mt-2">
+                  <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-2 block">Speed: {adminState.speed || 12}</label>
+                  <input 
+                    type="range" 
+                    min="5" max="100" step="1" 
+                    value={adminState.speed || 12} 
+                    onChange={(e) => setAdminState({ speed: parseInt(e.target.value) })}
+                    className="w-full accent-red-500"
+                  />
+                </div>
+
                 <div className="mt-2">
                   <span className="text-red-400 text-xs font-bold uppercase tracking-widest mb-2 block">Teleport To:</span>
                   <div className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-2">
@@ -322,6 +343,13 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
             />
           </div>
           <div className="absolute bottom-[5vmin] right-[5vmin] pointer-events-auto flex gap-[3vmin] items-end">
+            <button 
+              className="w-[15vmin] h-[15vmin] max-w-16 max-h-16 rounded-full bg-green-500/50 border-2 border-green-400 shadow-[0_0_20px_rgba(0,255,0,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-[2vmin]"
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('jumpPadBoost', { detail: { power: 32 } })); }}
+            >
+              <ChevronUp className="text-white w-1/2 h-1/2" />
+            </button>
             <button 
               className="w-[15vmin] h-[15vmin] max-w-16 max-h-16 rounded-full bg-cyan-500/50 border-2 border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-[2vmin]"
               style={{ touchAction: 'none' }}

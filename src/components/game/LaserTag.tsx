@@ -9,7 +9,7 @@ import { RemotePlayer } from './RemotePlayer';
 import { UI } from './UI';
 import { Entities } from './Entities';
 
-import { PerformanceMonitor, Stats } from '@react-three/drei';
+import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows } from '@react-three/drei';
 
 function GameSettings() {
   const { camera, invalidate, frameloop } = useThree();
@@ -173,12 +173,17 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
         camera={{ fov: 75, far: renderDistance }} 
         dpr={dynamicResolution ? dpr : 1}
         frameloop={fpsLimit > 0 ? 'demand' : 'always'}
+        gl={{ powerPreference: "high-performance", antialias: false }}
       >
         <GameSettings />
         {showFps && <Stats />}
         {dynamicResolution && (
-          <PerformanceMonitor onIncline={() => setDpr(2)} onDecline={() => setDpr(0.5)} />
+          <>
+            <PerformanceMonitor onIncline={() => setDpr(2)} onDecline={() => setDpr(0.5)} />
+            <AdaptiveDpr pixelated />
+          </>
         )}
+        <BakeShadows />
         <color attach="background" args={['#050505']} />
         <fog attach="fog" args={['#050505', renderDistance * 0.2, renderDistance]} />
         

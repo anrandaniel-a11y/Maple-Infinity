@@ -198,7 +198,7 @@ function Terrain() {
       </mesh>
       {/* Neon wireframe overlay for the terrain */}
       <mesh geometry={geometry} position={[0, 0.1, 0]}>
-        <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.6} blending={THREE.AdditiveBlending} />
+        <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.6} />
       </mesh>
     </RigidBody>
   );
@@ -276,11 +276,18 @@ const generateChunks = (seed: number) => {
   const numChunks = 5;
   const chunkSize = 2000 / numChunks;
   
-  const chunkData = Array.from({ length: numChunks * numChunks }, () => ({
-    positions: [] as [number, number, number][],
-    scales: [] as [number, number, number][],
-    colors: [] as number[]
-  }));
+  const chunkData = Array.from({ length: numChunks * numChunks }, (_, i) => {
+    const cx = i % numChunks;
+    const cz = Math.floor(i / numChunks);
+    const centerX = (cx + 0.5) * chunkSize - 1000;
+    const centerZ = (cz + 0.5) * chunkSize - 1000;
+    return {
+      positions: [] as [number, number, number][],
+      scales: [] as [number, number, number][],
+      colors: [] as number[],
+      center: [centerX, 0, centerZ]
+    };
+  });
 
   const palette = ['#000000', '#00ffff', '#ff00ff', '#ffff00', '#00ff00'];
   const colorObj = new THREE.Color();
@@ -346,8 +353,22 @@ function RandomObstacles() {
 function ObstacleChunk({ data }: { data: any }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const wireframeRef = useRef<THREE.InstancedMesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
+  const renderDistance = useGameStore((state) => state.renderDistance);
   
-  const { matrices, wireframeMatrices, colorsArray } = data;
+  const { matrices, wireframeMatrices, colorsArray, center } = data;
+  const box = useMemo(() => {
+    const min = new THREE.Vector3(center[0] - 200, -100, center[2] - 200);
+    const max = new THREE.Vector3(center[0] + 200, 100, center[2] + 200);
+    return new THREE.Box3(min, max);
+  }, [center]);
+
+  useFrame(({ camera }) => {
+    if (groupRef.current) {
+      const dist = box.distanceToPoint(camera.position);
+      groupRef.current.visible = dist < renderDistance;
+    }
+  });
 
   useEffect(() => {
     if (meshRef.current) {
@@ -361,7 +382,7 @@ function ObstacleChunk({ data }: { data: any }) {
   if (data.positions.length === 0) return null;
 
   return (
-    <group>
+    <group ref={groupRef}>
       <RigidBody type="fixed">
         {data.positions.map((pos: any, i: number) => (
           <CuboidCollider 
@@ -371,7 +392,7 @@ function ObstacleChunk({ data }: { data: any }) {
           />
         ))}
       </RigidBody>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, data.positions.length]} castShadow receiveShadow frustumCulled={true}>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, data.positions.length]} castShadow receiveShadow frustumCulled={false}>
         <instancedBufferAttribute attach="instanceMatrix" args={[matrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
@@ -392,7 +413,7 @@ function ObstacleChunk({ data }: { data: any }) {
           }}
         />
       </instancedMesh>
-      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
+      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={false}>
         <instancedBufferAttribute attach="instanceMatrix" args={[wireframeMatrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
@@ -400,7 +421,6 @@ function ObstacleChunk({ data }: { data: any }) {
           wireframe 
           transparent 
           opacity={0.4} 
-          toneMapped={false}
         />
       </instancedMesh>
     </group>

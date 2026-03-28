@@ -66,6 +66,7 @@ interface GameStore {
     infiniteHealth: boolean;
     flying: boolean;
     noclip: boolean;
+    speed: number;
   };
   interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null;
   connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
@@ -80,7 +81,7 @@ interface GameStore {
   setBoss: (boss: { id: string, health: number, maxHealth: number } | null) => void;
   updateBossHealth: (health: number) => void;
   setInteractable: (interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null) => void;
-  setAdminState: (state: Partial<{ infiniteHealth: boolean; flying: boolean; noclip: boolean }>) => void;
+  setAdminState: (state: Partial<{ infiniteHealth: boolean; flying: boolean; noclip: boolean; speed: number }>) => void;
   updatePlayer: (id: string, data: Partial<PlayerState>) => void;
   addLaser: (laser: LaserState) => void;
   removeLaser: (id: string) => void;
@@ -115,6 +116,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     infiniteHealth: false,
     flying: false,
     noclip: false,
+    speed: 12,
   },
 
   setSensitivity: (val) => set({ sensitivity: val }),
@@ -318,8 +320,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set({ socket: null, players: {}, myId: null, boss: null });
     }
   },
-
-  setSensitivity: (val) => set({ sensitivity: val }),
 
   updatePlayer: (id, data) => {
     const state = get();
