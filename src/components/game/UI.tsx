@@ -44,6 +44,8 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
 
   if (!me) return null;
 
+  const maxHealth = gameMode === 'speed' ? 125 : 500;
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       {/* Crosshair */}
@@ -83,20 +85,37 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
         </div>
       )}
 
+      {/* Eliminated Overlay */}
+      {me.health <= 0 && gameMode === 'team' && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-none animate-in fade-in duration-500">
+          <div className="text-center">
+            <h1 className="text-7xl font-black text-red-500 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(255,0,0,0.5)]">
+              ELIMINATED
+            </h1>
+            <p className="text-2xl text-white font-mono uppercase tracking-widest opacity-80">
+              Spectating
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* HUD */}
       <div className="absolute top-4 left-4 flex flex-col gap-2">
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
           <h3 className="text-cyan-400 font-bold uppercase tracking-widest text-sm mb-2">Health</h3>
           <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
             <div 
-              className={`h-full transition-all duration-300 ${me.health > 250 ? 'bg-green-500' : me.health > 100 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${Math.max(0, Math.min(100, (me.health / 500) * 100))}%` }}
+              className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+              style={{ width: `${Math.max(0, Math.min(100, (me.health / maxHealth) * 100))}%` }}
             />
           </div>
         </div>
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
           <h3 className="text-fuchsia-400 font-bold uppercase tracking-widest text-sm mb-1">Score: {me.score}</h3>
-          <h3 className="text-gray-400 font-bold uppercase tracking-widest text-xs">Mode: {gameMode.toUpperCase()}</h3>
+          <h3 className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-1">Mode: {gameMode.toUpperCase()}</h3>
+          {gameMode === 'team' && (
+            <h3 className="text-yellow-400 font-bold uppercase tracking-widest text-xs">Lives: {me.lives}</h3>
+          )}
         </div>
         
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">

@@ -14,7 +14,7 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [nickname, setNickname] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
-  const [gameMode, setGameMode] = useState<'pvp' | 'pve' | null>(null);
+  const [gameMode, setGameMode] = useState<'pvp' | 'pve' | 'team' | 'speed' | null>(null);
   const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard' | 'nightmare'>('normal');
 
   if (isAuthenticated && gameMode) {

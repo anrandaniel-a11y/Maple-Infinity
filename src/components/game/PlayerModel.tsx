@@ -74,6 +74,12 @@ export function PlayerModel({ color }: { color: string }) {
       <mesh position={[0, -0.7, 0]} geometry={hoverGlowGeo}>
         <meshBasicMaterial color={color} transparent opacity={0.5} />
       </mesh>
+
+      {/* Body Glow Effect */}
+      <mesh position={[0, 0.2, 0]} scale={[1.2, 1.2, 1.2]}>
+        <capsuleGeometry args={[0.4, 1, 4, 8]} />
+        <meshBasicMaterial color={color} transparent opacity={0.15} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
     </group>
   );
 }

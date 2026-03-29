@@ -4,7 +4,7 @@ import { Crosshair, ShieldAlert, Users, Zap, Play, ChevronLeft, Skull, Shield, S
 import { DynamicBackground } from './DynamicBackground';
 
 interface GameSelectorProps {
-  onSelectMode: (mode: 'pvp' | 'pve', difficulty?: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
+  onSelectMode: (mode: 'pvp' | 'pve' | 'team' | 'speed', difficulty?: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
   nickname: string;
 }
 
@@ -28,7 +28,7 @@ export function GameSelector({ onSelectMode, nickname }: GameSelectorProps) {
         </p>
       </motion.div>
 
-      <div className="z-10 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-6xl w-full">
+      <div className="z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 max-w-[1400px] w-full">
         {/* PvP Mode Card */}
         <motion.div
           initial={{ opacity: 0, x: -50 }}
@@ -212,6 +212,95 @@ export function GameSelector({ onSelectMode, nickname }: GameSelectorProps) {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        </motion.div>
+        {/* Team Mode Card */}
+        <motion.div
+          initial={{ opacity: 0, x: 50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.6 }}
+          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-blue-500/30 backdrop-blur-md hover:border-blue-400 transition-all duration-500"
+        >
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
+          <img 
+            src="https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&q=80&w=1000" 
+            alt="Team Deathmatch" 
+            className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 group-hover:scale-105 transition-all duration-700"
+            referrerPolicy="no-referrer"
+          />
+          
+          <div className="relative z-20 p-8 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-xl bg-blue-500/20 border border-blue-500/50">
+                <Users className="w-8 h-8 text-blue-400" />
+              </div>
+              <h2 className="text-3xl font-bold text-blue-400 tracking-wider uppercase">Team Deathmatch</h2>
+            </div>
+            
+            <p className="text-gray-300 mb-6 flex-grow leading-relaxed">
+              Form a duo and battle other teams. Single players get 2 lives to balance the odds. Coordinate, survive, and dominate the arena.
+            </p>
+            
+            <div className="flex gap-4 mb-8">
+              <div className="flex items-center gap-2 text-sm text-blue-200 bg-blue-900/40 px-3 py-1.5 rounded-full border border-blue-500/20">
+                <Users className="w-4 h-4" /> 2v2v2
+              </div>
+              <div className="flex items-center gap-2 text-sm text-blue-200 bg-blue-900/40 px-3 py-1.5 rounded-full border border-blue-500/20">
+                <Shield className="w-4 h-4" /> Tactical
+              </div>
+            </div>
+            
+            <button
+              onClick={() => onSelectMode('team')}
+              className="w-full py-4 rounded-xl bg-blue-500/20 hover:bg-blue-500 text-blue-100 hover:text-white border border-blue-500/50 hover:border-blue-400 font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-[0_0_30px_rgba(0,0,255,0.4)]"
+            >
+              <Play className="w-5 h-5" /> Enter Lobby
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Speed Mode Card */}
+        <motion.div
+          initial={{ opacity: 0, x: 50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.8 }}
+          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-yellow-500/30 backdrop-blur-md hover:border-yellow-400 transition-all duration-500"
+        >
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
+          <img 
+            src="https://images.unsplash.com/photo-1518002171953-a080ee817e1f?auto=format&fit=crop&q=80&w=1000" 
+            alt="Speed Mode" 
+            className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 group-hover:scale-105 transition-all duration-700"
+            referrerPolicy="no-referrer"
+          />
+          
+          <div className="relative z-20 p-8 h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-xl bg-yellow-500/20 border border-yellow-500/50">
+                <Zap className="w-8 h-8 text-yellow-400" />
+              </div>
+              <h2 className="text-3xl font-bold text-yellow-400 tracking-wider uppercase">Speed Mode</h2>
+            </div>
+            
+            <p className="text-gray-300 mb-6 flex-grow leading-relaxed">
+              High octane, fast-paced combat. Everyone moves at lightning speed but dies in just 5 hits. Reflexes are everything.
+            </p>
+            
+            <div className="flex gap-4 mb-8">
+              <div className="flex items-center gap-2 text-sm text-yellow-200 bg-yellow-900/40 px-3 py-1.5 rounded-full border border-yellow-500/20">
+                <Zap className="w-4 h-4" /> 50x Speed
+              </div>
+              <div className="flex items-center gap-2 text-sm text-yellow-200 bg-yellow-900/40 px-3 py-1.5 rounded-full border border-yellow-500/20">
+                <Skull className="w-4 h-4" /> 125 Health
+              </div>
+            </div>
+            
+            <button
+              onClick={() => onSelectMode('speed')}
+              className="w-full py-4 rounded-xl bg-yellow-500/20 hover:bg-yellow-500 text-yellow-100 hover:text-white border border-yellow-500/50 hover:border-yellow-400 font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-[0_0_30px_rgba(255,255,0,0.4)]"
+            >
+              <Play className="w-5 h-5" /> Enter Arena
+            </button>
           </div>
         </motion.div>
       </div>

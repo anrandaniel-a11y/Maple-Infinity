@@ -11,6 +11,8 @@ import { Entities } from './Entities';
 
 import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows } from '@react-three/drei';
 
+import { TeamLobby } from './TeamLobby';
+
 function GameSettings() {
   const { camera, invalidate, frameloop } = useThree();
   const renderDistance = useGameStore((state) => state.renderDistance);
@@ -140,7 +142,7 @@ function RemotePlayers() {
   );
 }
 
-export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare' }) {
+export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare' }) {
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const myId = useGameStore((state) => state.myId);
@@ -148,6 +150,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const dynamicResolution = useGameStore((state) => state.dynamicResolution);
   const fpsLimit = useGameStore((state) => state.fpsLimit);
   const showFps = useGameStore((state) => state.showFps);
+  const gameState = useGameStore((state) => state.gameState);
   const [dpr, setDpr] = useState(1);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -168,6 +171,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
 
   return (
     <div className="w-full h-screen bg-black relative overflow-hidden touch-none">
+      {gameState === 'lobby' && <TeamLobby />}
       <Canvas 
         shadows={{ type: THREE.PCFShadowMap }} 
         camera={{ fov: 75, far: renderDistance }} 

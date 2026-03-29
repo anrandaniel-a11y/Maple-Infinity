@@ -49,7 +49,7 @@ async function startServer() {
     medkits: Record<string, any>;
     entities: Record<string, any>;
     currentMapIndex: number;
-    mode: 'pvp' | 'pve';
+    mode: 'pvp' | 'pve' | 'team' | 'speed';
     difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
     seed: number;
     volume: Int32Array;
@@ -57,12 +57,15 @@ async function startServer() {
     bossId: string | null;
     bossPhase: number;
     bossDefeated: boolean;
+    state: 'lobby' | 'playing';
+    teams: Record<string, string>; // playerId -> teamId
+    votesToStart: Set<string>;
   }
 
   const TOTAL_MAPS = 3;
   const WEAPON_TYPES = ['REVOLVER', 'SHOTGUN', 'RPG', 'KNIFE'];
 
-  function createRoom(mode: 'pvp' | 'pve', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare'): Room {
+  function createRoom(mode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare'): Room {
     const seed = Math.floor(Math.random() * 1000000);
     const volume = generateVolume(seed);
     const weapons: Record<string, any> = {};
@@ -117,16 +120,21 @@ async function startServer() {
       bossActive: false,
       bossId: null,
       bossPhase: 0,
-      bossDefeated: false
+      bossDefeated: false,
+      state: mode === 'team' ? 'lobby' : 'playing',
+      teams: {},
+      votesToStart: new Set()
     };
   }
 
   const rooms: Record<string, Room> = {
     pvp: createRoom('pvp', 'normal'),
+    speed: createRoom('speed', 'normal'),
     'pve-easy': createRoom('pve', 'easy'),
     'pve-normal': createRoom('pve', 'normal'),
     'pve-hard': createRoom('pve', 'hard'),
-    'pve-nightmare': createRoom('pve', 'nightmare')
+    'pve-nightmare': createRoom('pve', 'nightmare'),
+    team: createRoom('team', 'normal')
   };
 
   // Game Loop for bleeding, weapon respawns, and entities
@@ -164,7 +172,7 @@ async function startServer() {
               room.players[p.lastAttacker].score += 1;
               io.to(roomId).emit('scoreUpdated', { id: p.lastAttacker, score: room.players[p.lastAttacker].score });
             }
-            p.health = 500;
+            p.health = r.mode === 'speed' ? 125 : 500;
             p.bleedingTicks = 0;
             p.weapon = 'DEFAULT';
             const spread = room.mode === 'pve' ? 100 : 2000;
@@ -507,32 +515,89 @@ async function startServer() {
 
   function applyDamage(roomId: string, targetId: string, shooterId: string, amount: number) {
     const room = rooms[roomId];
+    if (!room || room.state === 'lobby') return;
     const target = room.players[targetId];
-    if (target.infiniteHealth) return;
+    const shooter = room.players[shooterId];
+    if (!target || target.infiniteHealth) return;
+    
+    // Prevent friendly fire in team mode
+    if (room.mode === 'team' && room.teams[targetId] === room.teams[shooterId] && targetId !== shooterId) {
+      return;
+    }
     
     target.health -= amount;
     target.lastAttacker = shooterId;
     if (target.health <= 0) {
-      if (room.players[shooterId]) room.players[shooterId].score += 1;
-      target.health = 500;
-      target.bleedingTicks = 0;
-      target.weapon = 'DEFAULT';
-      const spread = room.mode === 'pve' ? 100 : 2000;
-      const spawnX = (Math.random() - 0.5) * spread;
-      const spawnZ = (Math.random() - 0.5) * spread;
-      const terrainY = getTerrainHeight(spawnX, spawnZ);
-      const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
-      target.x = spawnX;
-      target.y = Math.max(terrainY, blockY) + 20;
-      target.z = spawnZ;
-      io.to(roomId).emit('playerRespawned', target);
-      if (room.players[shooterId]) {
-        io.to(roomId).emit('scoreUpdated', { id: shooterId, score: room.players[shooterId].score });
-        if (room.players[shooterId].score % 5 === 0) {
-          room.currentMapIndex = (room.currentMapIndex + 1) % TOTAL_MAPS;
-          room.seed = Math.floor(Math.random() * 1000000);
-          room.volume = generateVolume(room.seed);
-          io.to(roomId).emit('mapChanged', { mapIndex: room.currentMapIndex, seed: room.seed });
+      if (room.mode === 'team') {
+        target.lives -= 1;
+        if (target.lives <= 0) {
+          // Player is eliminated
+          target.health = 0;
+          target.bleedingTicks = 0;
+          io.to(roomId).emit('playerEliminated', targetId);
+          
+          // Check if game is over
+          const remainingTeams = new Set();
+          for (const pId in room.players) {
+            if (room.players[pId].lives > 0) {
+              remainingTeams.add(room.teams[pId]);
+            }
+          }
+          if (remainingTeams.size <= 1) {
+            // Game over
+            const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+            io.to(roomId).emit('gameOver', { winningTeam });
+            setTimeout(() => {
+              room.state = 'lobby';
+              room.teams = {};
+              room.votesToStart.clear();
+              for (const pId in room.players) {
+                room.players[pId].health = room.mode === 'speed' ? 125 : 500;
+                room.players[pId].lives = 1;
+                room.players[pId].score = 0;
+              }
+              io.to(roomId).emit('gameStateChanged', { state: 'lobby', players: room.players });
+              io.to(roomId).emit('teamsUpdated', room.teams);
+              io.to(roomId).emit('votesUpdated', []);
+            }, 5000);
+          }
+        } else {
+          // Respawn with 1 less life
+          target.health = room.mode === 'speed' ? 125 : 500;
+          target.bleedingTicks = 0;
+          target.weapon = 'DEFAULT';
+          const spread = 2000;
+          const spawnX = (Math.random() - 0.5) * spread;
+          const spawnZ = (Math.random() - 0.5) * spread;
+          const terrainY = getTerrainHeight(spawnX, spawnZ);
+          const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
+          target.x = spawnX;
+          target.y = Math.max(terrainY, blockY) + 20;
+          target.z = spawnZ;
+          io.to(roomId).emit('playerRespawned', target);
+        }
+      } else {
+        if (shooter) shooter.score += 1;
+        target.health = room.mode === 'speed' ? 125 : 500;
+        target.bleedingTicks = 0;
+        target.weapon = 'DEFAULT';
+        const spread = room.mode === 'pve' ? 100 : 2000;
+        const spawnX = (Math.random() - 0.5) * spread;
+        const spawnZ = (Math.random() - 0.5) * spread;
+        const terrainY = getTerrainHeight(spawnX, spawnZ);
+        const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
+        target.x = spawnX;
+        target.y = Math.max(terrainY, blockY) + 20;
+        target.z = spawnZ;
+        io.to(roomId).emit('playerRespawned', target);
+        if (shooter) {
+          io.to(roomId).emit('scoreUpdated', { id: shooterId, score: shooter.score });
+          if (shooter.score % 5 === 0) {
+            room.currentMapIndex = (room.currentMapIndex + 1) % TOTAL_MAPS;
+            room.seed = Math.floor(Math.random() * 1000000);
+            room.volume = generateVolume(room.seed);
+            io.to(roomId).emit('mapChanged', { mapIndex: room.currentMapIndex, seed: room.seed });
+          }
         }
       }
     } else {
@@ -542,6 +607,7 @@ async function startServer() {
 
   function applyDamageToEntity(roomId: string, entityId: string, shooterId: string, amount: number) {
     const room = rooms[roomId];
+    if (!room || room.state === 'lobby') return;
     const entity = room.entities[entityId];
     if (!entity) return;
 
@@ -573,9 +639,9 @@ async function startServer() {
     console.log('Player connected:', socket.id);
     const nickname = socket.handshake.query.nickname || 'Player';
     const isAdmin = socket.handshake.query.isAdmin === 'true';
-    const mode = (socket.handshake.query.gameMode as 'pvp' | 'pve') || 'pvp';
+    const mode = (socket.handshake.query.gameMode as 'pvp' | 'pve' | 'team' | 'speed') || 'pvp';
     const difficulty = (socket.handshake.query.difficulty as 'easy' | 'normal' | 'hard' | 'nightmare') || 'normal';
-    const roomId = mode === 'pve' ? `pve-${difficulty}` : 'pvp';
+    const roomId = mode === 'pve' ? `pve-${difficulty}` : mode === 'team' ? 'team' : mode === 'speed' ? 'speed' : 'pvp';
     socket.join(roomId);
     socket.data.roomId = roomId;
     const room = rooms[roomId];
@@ -588,6 +654,8 @@ async function startServer() {
     const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
 
     // Initialize player
+    const isLateJoiner = mode === 'team' && room.state === 'playing';
+    
     room.players[socket.id] = {
       id: socket.id,
       nickname,
@@ -600,10 +668,11 @@ async function startServer() {
       rz: 0,
       color: ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'][Math.floor(Math.random() * 4)],
       score: 0,
-      health: 500,
+      health: isLateJoiner ? 0 : (mode === 'speed' ? 125 : 500),
       weapon: 'DEFAULT',
       bleedingTicks: 0,
-      lastAttacker: null
+      lastAttacker: null,
+      lives: isLateJoiner ? 0 : 1
     };
 
     // Send current state to new player
@@ -615,11 +684,105 @@ async function startServer() {
       mapIndex: room.currentMapIndex, 
       entities: room.entities, 
       seed: room.seed,
-      boss: room.bossActive && room.bossId ? room.entities[room.bossId] : null
+      boss: room.bossActive && room.bossId ? room.entities[room.bossId] : null,
+      state: room.state,
+      teams: room.teams,
+      votesToStart: Array.from(room.votesToStart)
     });
 
     // Broadcast new player to others
     socket.to(roomId).emit('playerJoined', room.players[socket.id]);
+
+    socket.on('joinTeam', (teamId) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (r && r.mode === 'team' && r.state === 'lobby') {
+        // Check if team is full (max 2)
+        const teamCount = Object.values(r.teams).filter(t => t === teamId).length;
+        if (teamCount < 2) {
+          r.teams[socket.id] = teamId;
+          if (r.votesToStart.has(socket.id)) {
+            r.votesToStart.delete(socket.id);
+            io.to(rId).emit('votesUpdated', Array.from(r.votesToStart));
+          }
+          io.to(rId).emit('teamsUpdated', r.teams);
+        }
+      }
+    });
+
+    socket.on('voteStart', () => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (r && r.mode === 'team' && r.state === 'lobby') {
+        r.votesToStart.add(socket.id);
+        io.to(rId).emit('votesUpdated', Array.from(r.votesToStart));
+        
+        // Check if all players have voted and there are at least 2 players
+        const numPlayers = Object.keys(r.players).length;
+        if (numPlayers >= 2 && r.votesToStart.size === numPlayers) {
+          r.state = 'playing';
+          // Assign 2 lives to single players
+          const teamCounts: Record<string, number> = {};
+          for (const t of Object.values(r.teams)) {
+            teamCounts[t] = (teamCounts[t] || 0) + 1;
+          }
+          
+          const spread = 2000;
+          for (const pId in r.players) {
+            const tId = r.teams[pId];
+            if (tId && teamCounts[tId] === 1) {
+              r.players[pId].lives = 2;
+            } else {
+              r.players[pId].lives = 1;
+            }
+            
+            // Reset player state
+            r.players[pId].health = r.mode === 'speed' ? 125 : 500;
+            r.players[pId].weapon = 'DEFAULT';
+            r.players[pId].bleedingTicks = 0;
+            r.players[pId].score = 0;
+            
+            // Respawn
+            const spawnX = (Math.random() - 0.5) * spread;
+            const spawnZ = (Math.random() - 0.5) * spread;
+            const terrainY = getTerrainHeight(spawnX, spawnZ);
+            const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
+            r.players[pId].x = spawnX;
+            r.players[pId].y = Math.max(terrainY, blockY) + 20;
+            r.players[pId].z = spawnZ;
+          }
+          
+          // Reset weapons and medkits
+          r.weapons = {};
+          r.medkits = {};
+          for (let i = 0; i < 15; i++) {
+            const x = (Math.random() - 0.5) * spread;
+            const z = (Math.random() - 0.5) * spread;
+            const terrainY = getTerrainHeight(x, z);
+            const blockY = getHighestBlockY(r.volume, x, z);
+            const y = Math.max(terrainY, blockY) + 1;
+            r.weapons[Math.random().toString(36).substring(7)] = { x, y, z, type: ['SHOTGUN', 'RPG', 'REVOLVER', 'KNIFE'][Math.floor(Math.random() * 4)] };
+          }
+          for (let i = 0; i < 10; i++) {
+            const x = (Math.random() - 0.5) * spread;
+            const z = (Math.random() - 0.5) * spread;
+            const terrainY = getTerrainHeight(x, z);
+            const blockY = getHighestBlockY(r.volume, x, z);
+            const y = Math.max(terrainY, blockY) + 1;
+            r.medkits[Math.random().toString(36).substring(7)] = { x, y, z };
+          }
+          
+          io.to(rId).emit('gameStateChanged', { state: 'playing', players: r.players });
+          io.to(rId).emit('weaponsUpdate', r.weapons);
+          io.to(rId).emit('medkitsUpdate', r.medkits);
+          
+          // Force clients to update their local positions
+          for (const pId in r.players) {
+            io.to(rId).emit('playerRespawned', r.players[pId]);
+          }
+        }
+      }
+    });
 
     socket.on('setAdminState', (state) => {
       const rId = socket.data.roomId;
@@ -634,7 +797,7 @@ async function startServer() {
     socket.on('move', (data) => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
-      if (r.players[socket.id]) {
+      if (r.players[socket.id] && r.players[socket.id].health > 0) {
         r.players[socket.id].x = data.x;
         r.players[socket.id].y = data.y;
         r.players[socket.id].z = data.z;
@@ -650,7 +813,7 @@ async function startServer() {
       const r = rooms[rId];
       const w = r.weapons[weaponId];
       const p = r.players[socket.id];
-      if (w && w.active && p) {
+      if (w && w.active && p && p.health > 0) {
         const dist = Math.sqrt((p.x - w.x)**2 + (p.y - w.y)**2 + (p.z - w.z)**2);
         if (dist < 5) {
           w.active = false;
@@ -667,12 +830,13 @@ async function startServer() {
       const r = rooms[rId];
       const m = r.medkits[medkitId];
       const p = r.players[socket.id];
-      if (m && m.active && p) {
+      if (m && m.active && p && p.health > 0) {
         const dist = Math.sqrt((p.x - m.x)**2 + (p.y - m.y)**2 + (p.z - m.z)**2);
         if (dist < 5) {
           m.active = false;
           m.respawnTime = Date.now() + 45000; // 45 seconds respawn
-          p.health = Math.min(500, p.health + 250);
+          const maxHealth = r.mode === 'speed' ? 125 : 500;
+          p.health = Math.min(maxHealth, p.health + 250);
           p.bleedingTicks = 0;
           io.to(rId).emit('medkitsUpdate', r.medkits);
           io.to(rId).emit('playerHit', { id: p.id, health: p.health, bleedingTicks: p.bleedingTicks });
@@ -686,7 +850,7 @@ async function startServer() {
       const r = rooms[rId];
       const shooterId = socket.id;
       const shooter = r.players[shooterId];
-      if (!shooter) return;
+      if (!shooter || shooter.health <= 0) return;
 
       const weapon = data.weapon || 'DEFAULT';
 
@@ -755,7 +919,62 @@ async function startServer() {
       console.log('Player disconnected:', socket.id);
       const rId = socket.data.roomId;
       if (rId && rooms[rId]) {
-        delete rooms[rId].players[socket.id];
+        const r = rooms[rId];
+        delete r.players[socket.id];
+        if (r.mode === 'team') {
+          delete r.teams[socket.id];
+          r.votesToStart.delete(socket.id);
+          io.to(rId).emit('teamsUpdated', r.teams);
+          io.to(rId).emit('votesUpdated', Array.from(r.votesToStart));
+          
+          const numPlayers = Object.keys(r.players).length;
+          // If no players left in team mode, reset to lobby
+          if (numPlayers === 0) {
+            r.state = 'lobby';
+            r.teams = {};
+            r.votesToStart.clear();
+          } else if (r.state === 'lobby' && numPlayers >= 2 && r.votesToStart.size === numPlayers) {
+            r.state = 'playing';
+            const teamCounts: Record<string, number> = {};
+            for (const t of Object.values(r.teams)) {
+              teamCounts[t] = (teamCounts[t] || 0) + 1;
+            }
+            for (const pId in r.players) {
+              const tId = r.teams[pId];
+              if (tId && teamCounts[tId] === 1) {
+                r.players[pId].lives = 2;
+              } else {
+                r.players[pId].lives = 1;
+              }
+            }
+            io.to(rId).emit('gameStateChanged', { state: 'playing', players: r.players });
+          } else if (r.state === 'playing') {
+            // Check if game is over due to disconnect
+            const remainingTeams = new Set();
+            for (const pId in r.players) {
+              if (r.players[pId].lives > 0) {
+                remainingTeams.add(r.teams[pId]);
+              }
+            }
+            if (remainingTeams.size <= 1) {
+              const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+              io.to(rId).emit('gameOver', { winningTeam });
+              setTimeout(() => {
+                r.state = 'lobby';
+                r.teams = {};
+                r.votesToStart.clear();
+                for (const pId in r.players) {
+                  r.players[pId].health = r.mode === 'speed' ? 125 : 500;
+                  r.players[pId].lives = 1;
+                  r.players[pId].score = 0;
+                }
+                io.to(rId).emit('gameStateChanged', { state: 'lobby', players: r.players });
+                io.to(rId).emit('teamsUpdated', r.teams);
+                io.to(rId).emit('votesUpdated', []);
+              }, 5000);
+            }
+          }
+        }
         io.to(rId).emit('playerLeft', socket.id);
       }
     });

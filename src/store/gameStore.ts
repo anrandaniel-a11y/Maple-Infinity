@@ -15,6 +15,7 @@ interface PlayerState {
   health: number;
   weapon?: string;
   bleedingTicks?: number;
+  lives?: number;
 }
 
 interface LaserState {
@@ -60,8 +61,11 @@ interface GameStore {
   fpsLimit: number;
   mapIndex: number;
   seed: number;
-  gameMode: 'pvp' | 'pve';
+  gameMode: 'pvp' | 'pve' | 'team' | 'speed';
   difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
+  gameState: 'lobby' | 'playing';
+  teams: Record<string, string>;
+  votesToStart: string[];
   adminState: {
     infiniteHealth: boolean;
     flying: boolean;
@@ -69,7 +73,7 @@ interface GameStore {
     speed: number;
   };
   interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null;
-  connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
+  connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
   disconnect: () => void;
   setSensitivity: (val: number) => void;
   setRenderDistance: (val: number) => void;
@@ -89,6 +93,8 @@ interface GameStore {
   removeExplosion: (id: string) => void;
   addShockwave: (sw: ShockwaveState) => void;
   removeShockwave: (id: string) => void;
+  joinTeam: (teamId: string) => void;
+  voteStart: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -110,6 +116,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   seed: 0,
   gameMode: 'pvp',
   difficulty: 'normal',
+  gameState: 'playing',
+  teams: {},
+  votesToStart: [],
   victory: false,
   interactable: null,
   adminState: {
@@ -140,6 +149,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
+  joinTeam: (teamId) => {
+    const s = get().socket;
+    if (s) s.emit('joinTeam', teamId);
+  },
+
+  voteStart: () => {
+    const s = get().socket;
+    if (s) s.emit('voteStart');
+  },
+
   connect: (nickname, isAdmin, gameMode, difficulty) => {
     if (get().socket) return;
     
@@ -148,8 +167,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Connect to the same host/port
     const socket = io({ query: { nickname, isAdmin, gameMode, difficulty } });
 
-    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, seed, boss }) => {
-      set({ players, weapons, medkits, entities, myId: id, mapIndex, seed, boss: boss || null });
+    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, seed, boss, state, teams, votesToStart }) => {
+      set({ 
+        players, 
+        weapons, 
+        medkits, 
+        entities, 
+        myId: id, 
+        mapIndex, 
+        seed, 
+        boss: boss || null,
+        gameState: state || 'playing',
+        teams: teams || {},
+        votesToStart: votesToStart || []
+      });
+    });
+
+    socket.on('teamsUpdated', (teams) => {
+      set({ teams });
+    });
+
+    socket.on('votesUpdated', (votesToStart) => {
+      set({ votesToStart });
+    });
+
+    socket.on('gameStateChanged', ({ state, players }) => {
+      set((s) => ({ 
+        gameState: state, 
+        players: { ...s.players, ...players } 
+      }));
+    });
+
+    socket.on('playerEliminated', (id) => {
+      set((state) => {
+        const newPlayers = { ...state.players };
+        if (newPlayers[id]) {
+          newPlayers[id] = { ...newPlayers[id], health: 0, bleedingTicks: 0, lives: 0 };
+        }
+        return { players: newPlayers };
+      });
+    });
+
+    socket.on('gameOver', ({ winningTeam }) => {
+      // Could set a game over state here if needed
+      console.log('Game Over! Winning Team:', winningTeam);
     });
 
     socket.on('bossSpawned', (boss) => {

@@ -26,6 +26,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   const me = useGameStore((state) => state.players[myId || '']);
   const sensitivity = useGameStore((state) => state.sensitivity);
   const adminState = useGameStore((state) => state.adminState);
+  const gameMode = useGameStore((state) => state.gameMode);
   const sensitivityRef = useRef(sensitivity);
   const lastShootTime = useRef(0);
 
@@ -38,11 +39,13 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   const touchRotationRef = useRef({ x: 0, y: 0 });
   const lastTouch = useRef<{ x: number, y: number, id: number } | null>(null);
   const lastDashTime = useRef(0);
+  const lastGroundedTime = useRef(0);
   const mobileDashRef = useRef(false);
   const dashVelocity = useRef(new Vector3());
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (useGameStore.getState().players[myId || '']?.health <= 0) return;
       if (e.code === 'KeyW') keysRef.current.w = true;
       if (e.code === 'KeyA') keysRef.current.a = true;
       if (e.code === 'KeyS') keysRef.current.s = true;
@@ -123,7 +126,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
     // Shooting
     const handleShoot = () => {
-      if (!socket || !myId || !me) return;
+      if (!socket || !myId || !me || me.health <= 0) return;
 
       const weapon = me.weapon || 'DEFAULT';
       const cooldowns: Record<string, number> = { DEFAULT: 200, REVOLVER: 600, SHOTGUN: 1000, RPG: 2000, KNIFE: 800 };
@@ -247,6 +250,14 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     const pos = bodyRef.current.translation();
     const linvel = bodyRef.current.linvel();
 
+    if (me.health <= 0) {
+      camera.position.set(pos.x, pos.y + 1.5, pos.z);
+      if (socket) {
+        socket.emit('move', { x: pos.x, y: pos.y, z: pos.z, rx: camera.rotation.x, ry: camera.rotation.y, rz: camera.rotation.z });
+      }
+      return;
+    }
+
     // Fallback respawn if falling through map
     if (!adminState.noclip && pos.y < -50) {
       bodyRef.current.setTranslation({ x: (Math.random() - 0.5) * 2000, y: 60, z: (Math.random() - 0.5) * 2000 }, true);
@@ -307,29 +318,57 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     if (adminState.flying) {
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      direction.multiplyScalar(adminState.speed || BASE_SPEED).applyEuler(camera.rotation);
+      const currentSpeed = gameMode === 'speed' ? 50 : BASE_SPEED;
+      direction.multiplyScalar(adminState.speed || currentSpeed).applyEuler(camera.rotation);
       
       bodyRef.current.setGravityScale(0, true);
       let verticalVelocity = direction.y;
-      if (keysRef.current.space) verticalVelocity += (adminState.speed || BASE_SPEED);
-      if (keysRef.current.shift) verticalVelocity -= (adminState.speed || BASE_SPEED);
+      if (keysRef.current.space) verticalVelocity += (adminState.speed || currentSpeed);
+      if (keysRef.current.shift) verticalVelocity -= (adminState.speed || currentSpeed);
       bodyRef.current.setLinvel({ x: direction.x, y: verticalVelocity, z: direction.z }, true);
     } else {
+      const currentSpeed = gameMode === 'speed' ? 50 : BASE_SPEED;
       eulerY.set(0, camera.rotation.y, 0, 'YXZ');
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      direction.multiplyScalar(adminState.speed || BASE_SPEED).applyEuler(eulerY);
+      direction.multiplyScalar(adminState.speed || currentSpeed).applyEuler(eulerY);
       
       // Jump
-      rayOrigin.x = pos.x;
-      rayOrigin.y = pos.y - 0.91;
-      rayOrigin.z = pos.z;
-      const ray = new rapier.Ray(rayOrigin, rayDir);
-      const hit = world.castRay(ray, 0.2, true);
-      const grounded = hit && hit.timeOfImpact < 0.2;
+      let isGrounded = false;
+      const offsets = [
+        [0, 0],
+        [0.3, 0],
+        [-0.3, 0],
+        [0, 0.3],
+        [0, -0.3]
+      ];
+      
+      for (const [ox, oz] of offsets) {
+        rayOrigin.x = pos.x + ox;
+        rayOrigin.y = pos.y - 0.91;
+        rayOrigin.z = pos.z + oz;
+        const ray = new rapier.Ray(rayOrigin, rayDir);
+        const hit = world.castRay(ray, 0.4, true);
+        if (hit && hit.timeOfImpact < 0.4) {
+          isGrounded = true;
+          break;
+        }
+      }
 
-      if (keysRef.current.space && grounded) {
+      const now = performance.now();
+      if (isGrounded) {
+        lastGroundedTime.current = now;
+      }
+
+      // Coyote time: 150ms after leaving the ground
+      const canJump = isGrounded || (now - lastGroundedTime.current < 150);
+
+      if (keysRef.current.space && canJump) {
+        // Reset vertical velocity before applying impulse to ensure consistent jump height
+        bodyRef.current.setLinvel({ x: linvel.x, y: 0, z: linvel.z }, true);
         bodyRef.current.applyImpulse({ x: 0, y: JUMP_FORCE, z: 0 }, true);
+        lastGroundedTime.current = 0; // Prevent double jumping
+        keysRef.current.space = false; // Require releasing and pressing space again to jump
       }
 
       // Dash
@@ -351,19 +390,47 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
             dashDir.set(0, 0, -1); // Fallback if looking straight down
           }
           
-          const dashBurst = grounded ? 87 : 110;
+          const dashBurst = gameMode === 'speed' ? (isGrounded ? 150 : 200) : (isGrounded ? 87 : 110);
           dashVelocity.current.copy(dashDir).multiplyScalar(dashBurst); // Dash burst speed
         }
         mobileDashRef.current = false;
       }
 
       // Apply dash decay (less friction in air)
-      const friction = grounded ? 0.92 : 0.97;
+      const friction = isGrounded ? 0.92 : 0.97;
       dashVelocity.current.multiplyScalar(friction); 
       direction.add(dashVelocity.current);
 
+      let climbVelocity = linvel.y;
+      if (direction.lengthSq() > 0) {
+        const moveDir = direction.clone().normalize();
+        
+        // Raycast from knees (y - 0.8) starting slightly behind player center
+        // solid=false ensures we ignore colliders we are already inside (like the player's own capsule or the floor if we penetrate it slightly on landing)
+        // Starting slightly behind ensures we don't start inside a wall if we penetrate it slightly while pushing against it
+        const rayStartX = pos.x - moveDir.x * 0.1;
+        const rayStartZ = pos.z - moveDir.z * 0.1;
+        
+        const kneeRayOrigin = { x: rayStartX, y: pos.y - 0.8, z: rayStartZ };
+        const kneeRayDir = { x: moveDir.x, y: 0, z: moveDir.z };
+        const kneeRay = new rapier.Ray(kneeRayOrigin, kneeRayDir);
+        const kneeHit = world.castRayAndGetNormal(kneeRay, 0.7, false);
+        
+        // Raycast from head (y + 0.6) starting slightly behind player center
+        const headRayOrigin = { x: rayStartX, y: pos.y + 0.6, z: rayStartZ };
+        const headRayDir = { x: moveDir.x, y: 0, z: moveDir.z };
+        const headRay = new rapier.Ray(headRayOrigin, headRayDir);
+        const headHit = world.castRay(headRay, 0.7, false);
+        
+        // If knees hit something but head doesn't, there is a ledge we can climb
+        // Ensure we don't climb flat floors (normal.y > 0.5) to prevent bouncing on landing
+        if (kneeHit && (!kneeHit.normal || Math.abs(kneeHit.normal.y) < 0.5) && !headHit) {
+          climbVelocity = Math.max(linvel.y, 8); // Apply upward velocity to vault over
+        }
+      }
+
       bodyRef.current.setGravityScale(2.5, true);
-      bodyRef.current.setLinvel({ x: direction.x, y: linvel.y, z: direction.z }, true);
+      bodyRef.current.setLinvel({ x: direction.x, y: climbVelocity, z: direction.z }, true);
     }
 
     // Update Camera Position directly to prevent jitter at high sensitivities

@@ -5,6 +5,7 @@ import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { PlayerModel } from './PlayerModel';
 import { WeaponModel } from './WeaponModel';
+import { useGameStore } from '../../store/gameStore';
 
 // Shared Geometries & Materials
 const healthBgGeo = new THREE.PlaneGeometry(1, 0.1);
@@ -60,8 +61,12 @@ export const RemotePlayer = memo(function RemotePlayer({ player }: RemotePlayerP
     }
   });
 
-  const healthRatio = Math.max(0.001, player.health / 500);
-  const healthMat = player.health > 250 ? healthHighMat : player.health > 100 ? healthMedMat : healthLowMat;
+  const gameMode = useGameStore((state) => state.gameMode);
+  const maxHealth = gameMode === 'speed' ? 125 : 500;
+  const healthRatio = Math.max(0.001, player.health / maxHealth);
+  const healthMat = player.health > maxHealth / 2 ? healthHighMat : player.health > maxHealth / 5 ? healthMedMat : healthLowMat;
+
+  if (player.health <= 0) return null;
 
   return (
     <group ref={groupRef} position={[player.x, player.y, player.z]}>
