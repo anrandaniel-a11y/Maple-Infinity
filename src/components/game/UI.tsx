@@ -1,6 +1,6 @@
 import { useGameStore } from '../../store/gameStore';
 import { Joystick } from 'react-joystick-component';
-import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X } from 'lucide-react';
+import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean }) {
@@ -23,8 +23,32 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const interactable = useGameStore((state) => state.interactable);
   const boss = useGameStore((state) => state.boss);
   const victory = useGameStore((state) => state.victory);
+  const activeEvent = useGameStore((state) => state.activeEvent);
+  const eventsEnabled = useGameStore((state) => state.eventsEnabled);
   const [adminOpen, setAdminOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [adminWeaponsOpen, setAdminWeaponsOpen] = useState(false);
+  const [adminTpOpen, setAdminTpOpen] = useState(false);
+  const [adminBanOpen, setAdminBanOpen] = useState(false);
+  const [adminEventsOpen, setAdminEventsOpen] = useState(false);
+  const [eventWarning, setEventWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeEvent) {
+      setEventWarning(`WARNING: ${activeEvent.type.toUpperCase()} INCOMING!`);
+      const timer = setTimeout(() => setEventWarning(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeEvent]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
 
   // Force re-render at 30fps to update radar and HUD since player movement mutates state directly
   const [, setTick] = useState(0);
@@ -85,24 +109,45 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
         </div>
       )}
 
-      {/* Eliminated Overlay */}
-      {me.health <= 0 && gameMode === 'team' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-none animate-in fade-in duration-500">
+      {/* Event Warning Overlay */}
+      {eventWarning && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-900/30 backdrop-blur-sm z-40 pointer-events-none animate-pulse">
           <div className="text-center">
+            <h1 className="text-6xl font-black text-red-500 uppercase tracking-[0.2em] mb-4 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]">
+              {eventWarning}
+            </h1>
+          </div>
+        </div>
+      )}
+
+      {/* Death Screen / Eliminated Overlay */}
+      {me.health <= 0 && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-auto animate-in fade-in duration-500">
+          <div className="text-center flex flex-col items-center gap-6">
             <h1 className="text-7xl font-black text-red-500 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(255,0,0,0.5)]">
-              ELIMINATED
+              {gameMode === 'team' && me.lives <= 0 ? 'ELIMINATED' : 'YOU DIED'}
             </h1>
             <p className="text-2xl text-white font-mono uppercase tracking-widest opacity-80">
-              Spectating
+              {gameMode === 'team' && me.lives <= 0 ? 'Spectating' : 'Waiting for respawn...'}
             </p>
+            {!(gameMode === 'team' && me.lives <= 0) && (
+              <button 
+                className="bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-8 rounded-xl text-xl uppercase tracking-widest transition-colors border-2 border-red-400 shadow-[0_0_20px_rgba(255,0,0,0.5)]"
+                onClick={() => {
+                  useGameStore.getState().socket?.emit('requestRespawn');
+                }}
+              >
+                Respawn
+              </button>
+            )}
           </div>
         </div>
       )}
 
       {/* HUD */}
       <div className="absolute top-4 left-4 flex flex-col gap-2">
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-          <h3 className="text-cyan-400 font-bold uppercase tracking-widest text-sm mb-2">Health</h3>
+        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3" title="Health">
+          <Heart className="text-cyan-400" size={20} />
           <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
             <div 
               className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
@@ -110,147 +155,81 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
             />
           </div>
         </div>
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-          <h3 className="text-fuchsia-400 font-bold uppercase tracking-widest text-sm mb-1">Score: {me.score}</h3>
-          <h3 className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-1">Mode: {gameMode.toUpperCase()}</h3>
+        
+        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-3">
+          <div className="flex items-center gap-3 text-fuchsia-400" title="Score">
+            <Trophy size={18} />
+            <span className="font-bold text-sm">{me.score}</span>
+          </div>
+          <div className="flex items-center gap-3 text-gray-400" title="Game Mode">
+            <Gamepad2 size={18} />
+            <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
+          </div>
           {gameMode === 'team' && (
-            <h3 className="text-yellow-400 font-bold uppercase tracking-widest text-xs">Lives: {me.lives}</h3>
+            <div className="flex items-center gap-3 text-yellow-400" title="Lives">
+              <User size={18} />
+              <span className="font-bold text-sm">{me.lives}</span>
+            </div>
           )}
         </div>
         
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-          <h3 className="text-yellow-400 font-bold uppercase tracking-widest text-sm mb-1">Weapon: {me.weapon || 'DEFAULT'}</h3>
+        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3 text-yellow-400" title="Weapon">
+          <Swords size={18} />
+          <span className="font-bold text-sm">{me.weapon || 'DEFAULT'}</span>
         </div>
 
-        {me.bleedingTicks && me.bleedingTicks > 0 && (
-          <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse">
-            <h3 className="text-red-400 font-bold uppercase tracking-widest text-sm mb-1">BLEEDING!</h3>
+        {(me.bleedingTicks ?? 0) > 0 && (
+          <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse flex items-center justify-center text-red-400" title="Bleeding!">
+            <Droplet size={24} />
           </div>
         )}
         
-        {/* Settings Button */}
-        <div className="pointer-events-auto">
+        {/* Settings, Fullscreen & Admin Panel Buttons */}
+        <div className="pointer-events-auto flex gap-2">
           <button 
-            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl w-full flex items-center justify-between text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
             onClick={() => setSettingsOpen(true)}
             onPointerDown={(e) => e.stopPropagation()}
+            title="Settings"
           >
-            <div className="flex items-center gap-2">
-              <Settings size={16} />
-              <span className="font-bold uppercase tracking-widest text-sm">Settings</span>
-            </div>
+            <Settings size={20} />
           </button>
-        </div>
-
-        {!isMobile && (
-          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-1 mt-2">
-            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">WASD</span> Move</div>
-            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">SPACE</span> Jump</div>
-            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">SHIFT</span> Dash</div>
-            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">F</span> Boost</div>
-            <div className="text-gray-400 text-xs font-bold uppercase tracking-widest"><span className="text-white">CLICK</span> Shoot</div>
-          </div>
-        )}
-
-        {/* Admin Panel */}
-        {isAdmin && (
-          <div 
-            className="bg-red-900/50 backdrop-blur-md border border-red-500/50 rounded-xl pointer-events-auto overflow-hidden transition-all duration-300"
+          <button 
+            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                  console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+              } else {
+                document.exitFullscreen();
+              }
+            }}
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             onPointerDown={(e) => e.stopPropagation()}
           >
+            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
+          {isAdmin && (
             <button 
-              className="w-full p-4 flex items-center justify-between text-red-400 hover:bg-red-500/10 transition-colors"
-              onClick={() => setAdminOpen(!adminOpen)}
+              className="bg-red-900/50 backdrop-blur-md border border-red-500/50 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors p-4"
+              onClick={() => setAdminOpen(true)}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Admin Panel"
             >
-              <div className="flex items-center gap-2">
-                <ShieldAlert size={16} />
-                <span className="font-bold uppercase tracking-widest text-sm">Admin Panel</span>
-              </div>
-              {adminOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <ShieldAlert size={20} />
             </button>
-            
-            {adminOpen && (
-              <div className="p-4 pt-0 border-t border-red-500/20 flex flex-col gap-3">
-                <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={adminState.infiniteHealth}
-                    onChange={(e) => setAdminState({ infiniteHealth: e.target.checked })}
-                    className="accent-red-500"
-                  />
-                  Infinite Health
-                </label>
-                <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={adminState.flying}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setAdminState({ flying: checked });
-                      if (!checked) setAdminState({ noclip: false });
-                    }}
-                    className="accent-red-500"
-                  />
-                  Flying
-                </label>
-                <label className="flex items-center gap-2 text-white text-sm cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={adminState.noclip}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setAdminState({ noclip: checked });
-                      if (checked) setAdminState({ flying: true });
-                    }}
-                    className="accent-red-500"
-                  />
-                  Noclip
-                </label>
-                
-                <div className="mt-2">
-                  <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-2 block">Speed: {adminState.speed || 12}</label>
-                  <input 
-                    type="range" 
-                    min="5" max="100" step="1" 
-                    value={adminState.speed || 12} 
-                    onChange={(e) => setAdminState({ speed: parseInt(e.target.value) })}
-                    className="w-full accent-red-500"
-                  />
-                </div>
-
-                <div className="mt-2">
-                  <span className="text-red-400 text-xs font-bold uppercase tracking-widest mb-2 block">Teleport To:</span>
-                  <div className="flex flex-col gap-1 max-h-32 overflow-y-auto pr-2">
-                    {Object.values(players).filter(p => p.id !== myId).map(p => (
-                      <button
-                        key={p.id}
-                        className="text-left text-xs text-white hover:text-red-400 py-1 px-2 hover:bg-red-500/20 rounded transition-colors"
-                        onClick={() => {
-                          // Teleportation is handled by setting a flag or event, but we can just mutate the local player's position in the store
-                          // However, the local player's position is managed by Rapier physics.
-                          // We need a way to tell the LocalPlayer component to teleport.
-                          window.dispatchEvent(new CustomEvent('adminTeleport', { detail: { x: p.x, y: p.y, z: p.z } }));
-                        }}
-                      >
-                        {p.nickname || p.id.substring(0, 4)}
-                      </button>
-                    ))}
-                    {Object.values(players).filter(p => p.id !== myId).length === 0 && (
-                      <span className="text-gray-500 text-xs italic">No other players</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Right Side UI (Leaderboard & Minimap) */}
       <div className="absolute top-4 right-4 flex flex-col gap-4">
         {/* Leaderboard */}
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl min-w-[200px]">
-          <h3 className="text-white font-bold uppercase tracking-widest text-sm mb-3 border-b border-white/10 pb-2">Leaderboard</h3>
+        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl min-w-[150px]">
+          <div className="flex items-center justify-center mb-3 border-b border-white/10 pb-2 text-white" title="Leaderboard">
+            <ListOrdered size={18} />
+          </div>
           <div className="flex flex-col gap-2">
             {Object.values(players)
               .sort((a, b) => b.score - a.score)
@@ -258,7 +237,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
               .map((p, i) => (
                 <div key={p.id} className="flex justify-between items-center text-sm">
                   <span className="font-mono" style={{ color: p.color }}>
-                    {i + 1}. {p.id === myId ? 'YOU' : p.nickname}
+                    {i + 1}. {p.id === myId ? 'YOU' : p.nickname?.substring(0, 4) || p.id.substring(0, 4)}
                   </span>
                   <span className="font-bold text-white">{p.score}</span>
                 </div>
@@ -268,7 +247,6 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
 
         {/* Minimap */}
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-3 rounded-xl flex flex-col items-center">
-          <h3 className="text-white font-bold uppercase tracking-widest text-xs mb-2">Radar</h3>
           <div className="relative w-[150px] h-[150px] bg-gray-900/80 border border-white/20 rounded-full overflow-hidden">
             {/* Radar Sweep Effect */}
             <div className="absolute inset-0 rounded-full border border-cyan-500/30" />
@@ -311,12 +289,12 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                 return (
                   <div
                     key={p.id}
-                    className={`absolute rounded-full -translate-x-1/2 -translate-y-1/2 ${p.id === myId ? 'w-2 h-2 z-10 animate-pulse outline outline-2 outline-white' : isClamped ? 'w-1.5 h-1.5 z-0 opacity-80' : 'w-2 h-2 z-0'}`}
+                    className={`absolute rounded-full -translate-x-1/2 -translate-y-1/2 ${p.id === myId ? 'w-3 h-3 z-10 animate-pulse outline outline-2 outline-white' : isClamped ? 'w-2 h-2 z-0 opacity-100 border border-white/50' : 'w-3 h-3 z-0 border border-white/80'}`}
                     style={{
                       left: `${mapX}px`,
                       top: `${mapY}px`,
                       backgroundColor: p.color,
-                      boxShadow: `0 0 8px ${p.color}`
+                      boxShadow: `0 0 10px ${p.color}, inset 0 0 4px rgba(255,255,255,0.5)`
                     }}
                   />
                 );
@@ -328,22 +306,20 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
 
       {/* Interact Prompt */}
       {interactable && (
-        <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 bg-black/80 border border-white/20 px-6 py-3 rounded-xl backdrop-blur-md flex flex-col items-center gap-1 pointer-events-auto">
+        <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 bg-black/80 border border-white/20 px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-3 pointer-events-auto">
           <span className="text-white font-bold uppercase tracking-widest text-sm">
             {interactable.name}
           </span>
-          <div className="flex items-center gap-2">
-            {!isMobile && (
-              <span className="bg-white text-black px-2 py-0.5 rounded text-xs font-bold">E</span>
-            )}
-            <span className="text-gray-400 text-xs uppercase tracking-widest">to Pick Up</span>
-          </div>
+          {!isMobile && (
+            <span className="bg-white text-black px-2 py-1 rounded text-xs font-bold">E</span>
+          )}
           {isMobile && (
             <button 
-              className="mt-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold uppercase tracking-widest text-xs px-4 py-2 rounded transition-colors"
+              className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold px-3 py-1 rounded transition-colors flex items-center justify-center"
               onPointerDown={() => window.dispatchEvent(new Event('mobileInteract'))}
+              title="Interact"
             >
-              Interact
+              <Zap size={16} />
             </button>
           )}
         </div>
@@ -456,6 +432,214 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                 />
                 Show FPS
               </label>
+
+              <button
+                className="mt-2 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400 border border-cyan-500/50 rounded-lg p-3 font-bold uppercase tracking-widest text-sm transition-colors"
+                onClick={() => {
+                  if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(err => {
+                      console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                    });
+                  } else {
+                    document.exitFullscreen();
+                  }
+                }}
+              >
+                Toggle Fullscreen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Panel Modal */}
+      {isAdmin && adminOpen && (
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center pointer-events-auto z-50">
+          <div className="bg-gray-900 border border-red-500/50 rounded-2xl p-6 max-w-md w-full shadow-[0_0_30px_rgba(255,0,0,0.2)]">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2 text-red-400">
+                <ShieldAlert size={24} />
+                <h2 className="text-xl font-bold uppercase tracking-widest">Admin Panel</h2>
+              </div>
+              <button 
+                onClick={() => setAdminOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <label className="flex items-center gap-2 text-white text-sm cursor-pointer bg-black/30 p-3 rounded-lg border border-white/5 hover:bg-black/50 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={adminState.infiniteHealth}
+                    onChange={(e) => setAdminState({ infiniteHealth: e.target.checked })}
+                    className="accent-red-500 w-4 h-4"
+                  />
+                  Infinite Health
+                </label>
+                <label className="flex items-center gap-2 text-white text-sm cursor-pointer bg-black/30 p-3 rounded-lg border border-white/5 hover:bg-black/50 transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={adminState.flying}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setAdminState({ flying: checked });
+                      if (!checked) setAdminState({ noclip: false });
+                    }}
+                    className="accent-red-500 w-4 h-4"
+                  />
+                  Flying
+                </label>
+                <label className="flex items-center gap-2 text-white text-sm cursor-pointer bg-black/30 p-3 rounded-lg border border-white/5 hover:bg-black/50 transition-colors col-span-2">
+                  <input 
+                    type="checkbox" 
+                    checked={adminState.noclip}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setAdminState({ noclip: checked });
+                      if (checked) setAdminState({ flying: true });
+                    }}
+                    className="accent-red-500 w-4 h-4"
+                  />
+                  Noclip
+                </label>
+                <label className="flex items-center gap-2 text-white text-sm cursor-pointer bg-black/30 p-3 rounded-lg border border-white/5 hover:bg-black/50 transition-colors col-span-2">
+                  <input 
+                    type="checkbox" 
+                    checked={eventsEnabled}
+                    onChange={(e) => {
+                      useGameStore.getState().socket?.emit('adminToggleEvents', e.target.checked);
+                    }}
+                    className="accent-red-500 w-4 h-4"
+                  />
+                  Natural Disasters Enabled
+                </label>
+              </div>
+              
+              <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
+                  <span>Speed</span>
+                  <span className="text-white">{adminState.speed || (gameMode === 'speed' ? 50 : 12)}</span>
+                </label>
+                <input 
+                  type="range" 
+                  min="5" max="100" step="1" 
+                  value={adminState.speed || (gameMode === 'speed' ? 50 : 12)} 
+                  onChange={(e) => setAdminState({ speed: parseInt(e.target.value) })}
+                  className="w-full accent-red-500"
+                />
+              </div>
+
+              <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                <button 
+                  className="w-full flex justify-between items-center text-red-400 text-xs font-bold uppercase tracking-widest mb-3"
+                  onClick={() => setAdminWeaponsOpen(!adminWeaponsOpen)}
+                >
+                  <span>Give Weapon</span>
+                  {adminWeaponsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                {adminWeaponsOpen && (
+                  <div className="flex flex-wrap gap-2">
+                    {['DEFAULT', 'SHOTGUN', 'RPG', 'REVOLVER', 'KNIFE'].map(w => (
+                      <button
+                        key={w}
+                        className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
+                        onClick={() => {
+                          useGameStore.getState().socket?.emit('adminGiveWeapon', w);
+                        }}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                <button 
+                  className="w-full flex justify-between items-center text-red-400 text-xs font-bold uppercase tracking-widest mb-3"
+                  onClick={() => setAdminEventsOpen(!adminEventsOpen)}
+                >
+                  <span>Trigger Event</span>
+                  {adminEventsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                {adminEventsOpen && (
+                  <div className="flex flex-wrap gap-2">
+                    {['tornado', 'fog', 'lava', 'meteorite'].map(e => (
+                      <button
+                        key={e}
+                        className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
+                        onClick={() => {
+                          useGameStore.getState().socket?.emit('adminTriggerEvent', e);
+                        }}
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                <button 
+                  className="w-full flex justify-between items-center text-red-400 text-xs font-bold uppercase tracking-widest mb-3"
+                  onClick={() => setAdminTpOpen(!adminTpOpen)}
+                >
+                  <span>Teleport To Player</span>
+                  {adminTpOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                {adminTpOpen && (
+                  <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    {Object.values(players).filter(p => p.id !== myId).map(p => (
+                      <button
+                        key={p.id}
+                        className="text-left text-sm font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-white/5 hover:border-red-500/30"
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('adminTeleport', { detail: { x: p.x, y: p.y, z: p.z } }));
+                          setAdminOpen(false);
+                        }}
+                      >
+                        {p.nickname || p.id.substring(0, 4)}
+                      </button>
+                    ))}
+                    {Object.values(players).filter(p => p.id !== myId).length === 0 && (
+                      <div className="text-gray-500 text-sm italic text-center py-2">No other players online</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                <button 
+                  className="w-full flex justify-between items-center text-red-400 text-xs font-bold uppercase tracking-widest mb-3"
+                  onClick={() => setAdminBanOpen(!adminBanOpen)}
+                >
+                  <span>Ban Player</span>
+                  {adminBanOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+                {adminBanOpen && (
+                  <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    {Object.values(players).filter(p => p.id !== myId).map(p => (
+                      <button
+                        key={p.id}
+                        className="text-left text-sm font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-white/5 hover:border-red-500/30 flex justify-between items-center group"
+                        onClick={() => {
+                          useGameStore.getState().socket?.emit('adminBan', p.id);
+                        }}
+                      >
+                        <span>{p.nickname || p.id.substring(0, 4)}</span>
+                        <span className="text-xs text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">BAN</span>
+                      </button>
+                    ))}
+                    {Object.values(players).filter(p => p.id !== myId).length === 0 && (
+                      <div className="text-gray-500 text-sm italic text-center py-2">No other players online</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

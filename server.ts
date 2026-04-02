@@ -60,6 +60,8 @@ async function startServer() {
     state: 'lobby' | 'playing';
     teams: Record<string, string>; // playerId -> teamId
     votesToStart: Set<string>;
+    activeEvent: { type: 'tornado' | 'fog' | 'lava' | 'meteorite', endTime: number, targets?: {x: number, z: number}[] } | null;
+    eventsEnabled: boolean;
   }
 
   const TOTAL_MAPS = 3;
@@ -123,7 +125,9 @@ async function startServer() {
       bossDefeated: false,
       state: mode === 'team' ? 'lobby' : 'playing',
       teams: {},
-      votesToStart: new Set()
+      votesToStart: new Set(),
+      activeEvent: null,
+      eventsEnabled: true
     };
   }
 
@@ -142,6 +146,11 @@ async function startServer() {
     const now = Date.now();
     
     for (const [roomId, room] of Object.entries(rooms)) {
+      if (room.activeEvent && now > room.activeEvent.endTime) {
+        room.activeEvent = null;
+        io.to(roomId).emit('specialEventEnded');
+      }
+
       let weaponsUpdated = false;
       for (const w of Object.values(room.weapons)) {
         if (!w.active && now > w.respawnTime) {
@@ -168,18 +177,42 @@ async function startServer() {
           }
           p.bleedingTicks--;
           if (p.health <= 0) {
+            p.health = 0;
+            p.bleedingTicks = 0;
             if (p.lastAttacker && room.players[p.lastAttacker]) {
               room.players[p.lastAttacker].score += 1;
               io.to(roomId).emit('scoreUpdated', { id: p.lastAttacker, score: room.players[p.lastAttacker].score });
             }
-            p.health = r.mode === 'speed' ? 125 : 500;
-            p.bleedingTicks = 0;
-            p.weapon = 'DEFAULT';
-            const spread = room.mode === 'pve' ? 100 : 2000;
-            p.x = (Math.random() - 0.5) * spread;
-            p.y = 60;
-            p.z = (Math.random() - 0.5) * spread;
-            io.to(roomId).emit('playerRespawned', p);
+            if (room.mode === 'team') {
+              p.lives -= 1;
+              if (p.lives <= 0) {
+                io.to(roomId).emit('playerEliminated', p.id);
+                const remainingTeams = new Set();
+                for (const pId in room.players) {
+                  if (room.players[pId].lives > 0) {
+                    remainingTeams.add(room.teams[pId]);
+                  }
+                }
+                if (remainingTeams.size <= 1) {
+                  const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+                  io.to(roomId).emit('gameOver', { winningTeam });
+                  setTimeout(() => {
+                    room.state = 'lobby';
+                    room.teams = {};
+                    room.votesToStart.clear();
+                    for (const pId in room.players) {
+                      room.players[pId].health = 500;
+                      room.players[pId].lives = 1;
+                      room.players[pId].score = 0;
+                    }
+                    io.to(roomId).emit('gameStateChanged', { state: 'lobby', players: room.players });
+                    io.to(roomId).emit('teamsUpdated', room.teams);
+                    io.to(roomId).emit('votesUpdated', []);
+                  }, 5000);
+                }
+              }
+            }
+            io.to(roomId).emit('playerHit', { id: p.id, health: 0, bleedingTicks: 0 });
           } else {
             io.to(roomId).emit('playerHit', { id: p.id, health: p.health, bleedingTicks: p.bleedingTicks });
           }
@@ -265,6 +298,20 @@ async function startServer() {
       }
     }
   }, 1000);
+
+  // Special Events Loop
+  setInterval(() => {
+    const events: ('tornado' | 'fog' | 'lava' | 'meteorite')[] = ['tornado', 'fog', 'lava', 'meteorite'];
+    for (const [roomId, room] of Object.entries(rooms)) {
+      if (room.state !== 'playing') continue;
+      if (!room.eventsEnabled) continue;
+      if (room.activeEvent) continue; // Don't start a new event if one is active
+      const event = events[Math.floor(Math.random() * events.length)];
+      const targets = Object.values(room.players).map(p => ({ x: p.x, z: p.z }));
+      room.activeEvent = { type: event, endTime: Date.now() + 30000, targets }; // 30 seconds duration
+      io.to(roomId).emit('specialEvent', { type: event, duration: 30000, startTime: Date.now(), targets });
+    }
+  }, 180000); // Every 3 minutes
 
   function spawnBossMinions(room: Room, roomId: string, count: number) {
     const boss = room.entities[room.bossId!];
@@ -552,7 +599,7 @@ async function startServer() {
               room.teams = {};
               room.votesToStart.clear();
               for (const pId in room.players) {
-                room.players[pId].health = room.mode === 'speed' ? 125 : 500;
+                room.players[pId].health = 500;
                 room.players[pId].lives = 1;
                 room.players[pId].score = 0;
               }
@@ -562,34 +609,16 @@ async function startServer() {
             }, 5000);
           }
         } else {
-          // Respawn with 1 less life
-          target.health = room.mode === 'speed' ? 125 : 500;
+          // Wait for respawn (with 1 less life)
+          target.health = 0;
           target.bleedingTicks = 0;
-          target.weapon = 'DEFAULT';
-          const spread = 2000;
-          const spawnX = (Math.random() - 0.5) * spread;
-          const spawnZ = (Math.random() - 0.5) * spread;
-          const terrainY = getTerrainHeight(spawnX, spawnZ);
-          const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
-          target.x = spawnX;
-          target.y = Math.max(terrainY, blockY) + 20;
-          target.z = spawnZ;
-          io.to(roomId).emit('playerRespawned', target);
+          io.to(roomId).emit('playerHit', { id: targetId, health: 0, bleedingTicks: 0 });
         }
       } else {
         if (shooter) shooter.score += 1;
-        target.health = room.mode === 'speed' ? 125 : 500;
+        target.health = 0;
         target.bleedingTicks = 0;
-        target.weapon = 'DEFAULT';
-        const spread = room.mode === 'pve' ? 100 : 2000;
-        const spawnX = (Math.random() - 0.5) * spread;
-        const spawnZ = (Math.random() - 0.5) * spread;
-        const terrainY = getTerrainHeight(spawnX, spawnZ);
-        const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
-        target.x = spawnX;
-        target.y = Math.max(terrainY, blockY) + 20;
-        target.z = spawnZ;
-        io.to(roomId).emit('playerRespawned', target);
+        io.to(roomId).emit('playerHit', { id: targetId, health: 0, bleedingTicks: 0 });
         if (shooter) {
           io.to(roomId).emit('scoreUpdated', { id: shooterId, score: shooter.score });
           if (shooter.score % 5 === 0) {
@@ -687,7 +716,9 @@ async function startServer() {
       boss: room.bossActive && room.bossId ? room.entities[room.bossId] : null,
       state: room.state,
       teams: room.teams,
-      votesToStart: Array.from(room.votesToStart)
+      votesToStart: Array.from(room.votesToStart),
+      activeEvent: room.activeEvent ? { type: room.activeEvent.type, duration: room.activeEvent.endTime - Date.now(), startTime: room.activeEvent.endTime - 30000, targets: room.activeEvent.targets } : null,
+      eventsEnabled: room.eventsEnabled
     });
 
     // Broadcast new player to others
@@ -737,7 +768,7 @@ async function startServer() {
             }
             
             // Reset player state
-            r.players[pId].health = r.mode === 'speed' ? 125 : 500;
+            r.players[pId].health = 500;
             r.players[pId].weapon = 'DEFAULT';
             r.players[pId].bleedingTicks = 0;
             r.players[pId].score = 0;
@@ -821,6 +852,7 @@ async function startServer() {
           p.weapon = w.type;
           io.to(rId).emit('weaponsUpdate', r.weapons);
           socket.emit('weaponPickedUp', w.type);
+          io.to(rId).emit('playerWeaponChanged', { id: p.id, weapon: w.type });
         }
       }
     });
@@ -845,6 +877,18 @@ async function startServer() {
       }
     });
 
+    socket.on('adminGiveWeapon', (weaponType) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      if (p.health > 0) {
+        p.weapon = weaponType;
+        socket.emit('weaponPickedUp', weaponType);
+        io.to(rId).emit('playerWeaponChanged', { id: p.id, weapon: weaponType });
+      }
+    });
+
     socket.on('shoot', (data) => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
@@ -855,29 +899,30 @@ async function startServer() {
       const weapon = data.weapon || 'DEFAULT';
 
       if (weapon === 'RPG') {
-        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: data.to, color: '#ff8800' });
-        io.to(rId).emit('explosion', { x: data.to[0], y: data.to[1], z: data.to[2], radius: 15 });
+        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: data.to, color: '#ff8800', weapon });
+        io.to(rId).emit('explosion', { x: data.to[0], y: data.to[1], z: data.to[2], radius: 30 });
 
         for (const targetId in r.players) {
           if (targetId === shooterId) continue;
           const target = r.players[targetId];
           const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
-          if (dist < 15) {
-            const damage = Math.floor(80 * (1 - dist/15));
+          if (dist < 30) {
+            const maxHealth = r.mode === 'speed' ? 125 : 500;
+            const damage = Math.floor((maxHealth / 2) * (1 - dist/30));
             applyDamage(rId, targetId, shooterId, damage);
           }
         }
         for (const targetId in r.entities) {
           const target = r.entities[targetId];
           const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
-          if (dist < 15) {
-            const damage = Math.floor(80 * (1 - dist/15));
+          if (dist < 30) {
+            const damage = Math.floor(250 * (1 - dist/30));
             applyDamageToEntity(rId, targetId, shooterId, damage);
           }
         }
       } else if (weapon === 'SHOTGUN') {
         data.rays.forEach((ray: any) => {
-          io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: ray.from, to: ray.to, color: '#ffff00' });
+          io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: ray.from, to: ray.to, color: '#ffff00', weapon });
           for (const targetId in r.players) {
             if (targetId === shooterId) continue;
             if (checkHit(r.players[targetId], ray.from, ray.to)) {
@@ -896,7 +941,7 @@ async function startServer() {
         if (weapon === 'REVOLVER') { damage = 45; color = '#ffffff'; }
         if (weapon === 'KNIFE') { damage = 20; color = '#aaaaaa'; }
 
-        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: data.to, color });
+        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: data.to, color, weapon });
 
         for (const targetId in r.players) {
           if (targetId === shooterId) continue;
@@ -912,6 +957,14 @@ async function startServer() {
             applyDamageToEntity(rId, targetId, shooterId, damage);
           }
         }
+      }
+    });
+
+    socket.on('takeEnvironmentalDamage', (amount) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (r && r.state === 'playing') {
+        applyDamage(rId, socket.id, 'environment', amount);
       }
     });
 
@@ -977,6 +1030,68 @@ async function startServer() {
         }
         io.to(rId).emit('playerLeft', socket.id);
       }
+    });
+
+    socket.on('requestRespawn', () => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (!r) return;
+      const p = r.players[socket.id];
+      if (p && p.health <= 0) {
+        if (r.mode === 'team' && p.lives <= 0) return; // Can't respawn if eliminated
+        
+        p.health = r.mode === 'speed' ? 125 : 500;
+        p.bleedingTicks = 0;
+        p.weapon = 'DEFAULT';
+        const spread = r.mode === 'pve' ? 100 : 2000;
+        const spawnX = (Math.random() - 0.5) * spread;
+        const spawnZ = (Math.random() - 0.5) * spread;
+        const terrainY = getTerrainHeight(spawnX, spawnZ);
+        const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
+        p.x = spawnX;
+        p.y = Math.max(terrainY, blockY) + 20;
+        p.z = spawnZ;
+        io.to(rId).emit('playerRespawned', p);
+      }
+    });
+
+    socket.on('adminBan', (targetId) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (!r) return;
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      const targetSocket = io.sockets.sockets.get(targetId);
+      if (targetSocket) {
+        targetSocket.emit('banned');
+        targetSocket.disconnect(true);
+      }
+    });
+
+    socket.on('adminTriggerEvent', (event) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (!r) return;
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      if (['tornado', 'fog', 'lava', 'meteorite'].includes(event)) {
+        const targets = Object.values(r.players).map(p => ({ x: p.x, z: p.z }));
+        r.activeEvent = { type: event as any, endTime: Date.now() + 30000, targets };
+        io.to(rId).emit('specialEvent', { type: event, duration: 30000, startTime: Date.now(), targets });
+      }
+    });
+
+    socket.on('adminToggleEvents', (enabled: boolean) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (!r) return;
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      r.eventsEnabled = enabled;
+      io.to(rId).emit('eventsToggled', enabled);
     });
   });
 

@@ -5,6 +5,7 @@ import { Vector3, Vector2, Euler, Quaternion, Raycaster } from 'three';
 import { PointerLockControls } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
+import { FirstPersonWeapon } from './FirstPersonWeapon';
 
 const BASE_SPEED = 12;
 const JUMP_FORCE = 8; // Increased to match new gravity scale (2.5)
@@ -33,6 +34,11 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   useEffect(() => {
     sensitivityRef.current = sensitivity;
   }, [sensitivity]);
+
+  useEffect(() => {
+    scene.add(camera);
+    return () => { scene.remove(camera); };
+  }, [camera, scene]);
 
   const keysRef = useRef({ w: false, a: false, s: false, d: false, space: false, shift: false });
   const joystickRef = useRef({ x: 0, y: 0 });
@@ -126,9 +132,11 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
     // Shooting
     const handleShoot = () => {
-      if (!socket || !myId || !me || me.health <= 0) return;
+      const state = useGameStore.getState();
+      const currentMe = state.myId ? state.players[state.myId] : null;
+      if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
 
-      const weapon = me.weapon || 'DEFAULT';
+      const weapon = currentMe.weapon || 'DEFAULT';
       const cooldowns: Record<string, number> = { DEFAULT: 200, REVOLVER: 600, SHOTGUN: 1000, RPG: 2000, KNIFE: 800 };
       
       if (performance.now() - lastShootTime.current < (cooldowns[weapon] || 200)) return;
@@ -138,35 +146,41 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       const rayDir = new Vector3();
       camera.getWorldDirection(rayDir);
 
-      // Use Rapier for accurate hit point calculation for RPG/others
-      const ray = new rapier.Ray({ x: rayOrigin.x, y: rayOrigin.y, z: rayOrigin.z }, { x: rayDir.x, y: rayDir.y, z: rayDir.z });
-      const hit = world.castRay(ray, 300, true);
-      let hitPoint = new Vector3().copy(rayOrigin).add(rayDir.clone().multiplyScalar(100));
-      if (hit) {
-        hitPoint = new Vector3().copy(rayOrigin).add(rayDir.clone().normalize().multiplyScalar(hit.timeOfImpact));
-      }
+      const rOrigin = rayOrigin.clone().add(rayDir.clone().multiplyScalar(0.5));
 
       if (weapon === 'SHOTGUN') {
         const rays = [];
         for(let i=0; i<8; i++) {
-           const spreadX = (Math.random() - 0.5) * 0.15;
-           const spreadY = (Math.random() - 0.5) * 0.15;
-           const spreadRay = new Raycaster();
-           spreadRay.setFromCamera(new Vector2(spreadX, spreadY), camera);
-           const spreadTo = spreadRay.ray.at(50, new Vector3());
-           rays.push({ from: [camera.position.x, camera.position.y, camera.position.z], to: [spreadTo.x, spreadTo.y, spreadTo.z] });
+           const rDir = rayDir.clone().add(new Vector3((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4)).normalize();
+           const rRay = new rapier.Ray({ x: rOrigin.x, y: rOrigin.y, z: rOrigin.z }, { x: rDir.x, y: rDir.y, z: rDir.z });
+           const rHit = world.castRay(rRay, 50, true);
+           
+           let spreadTo = new Vector3().copy(rOrigin).add(rDir.clone().multiplyScalar(50));
+           if (rHit) {
+             spreadTo = new Vector3().copy(rOrigin).add(rDir.clone().multiplyScalar(rHit.timeOfImpact));
+           }
+           
+           rays.push({ from: [rOrigin.x, rOrigin.y, rOrigin.z], to: [spreadTo.x, spreadTo.y, spreadTo.z] });
         }
         socket.emit('shoot', { weapon, rays });
       } else {
+        const ray = new rapier.Ray({ x: rOrigin.x, y: rOrigin.y, z: rOrigin.z }, { x: rayDir.x, y: rayDir.y, z: rayDir.z });
+        const hit = world.castRay(ray, 300, true);
+        let hitPoint = new Vector3().copy(rOrigin).add(rayDir.clone().multiplyScalar(100));
+        if (hit) {
+          hitPoint = new Vector3().copy(rOrigin).add(rayDir.clone().normalize().multiplyScalar(hit.timeOfImpact));
+        }
+
         socket.emit('shoot', { 
           weapon, 
-          from: [camera.position.x, camera.position.y, camera.position.z], 
+          from: [rOrigin.x, rOrigin.y, rOrigin.z], 
           to: [hitPoint.x, hitPoint.y, hitPoint.z] 
         });
       }
 
       // Recoil
       camera.rotation.x += 0.05;
+      window.dispatchEvent(new CustomEvent('playerShoot'));
     };
 
     const handleMobileDash = () => {
@@ -369,6 +383,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         bodyRef.current.applyImpulse({ x: 0, y: JUMP_FORCE, z: 0 }, true);
         lastGroundedTime.current = 0; // Prevent double jumping
         keysRef.current.space = false; // Require releasing and pressing space again to jump
+        window.dispatchEvent(new CustomEvent('playerJump'));
       }
 
       // Dash
@@ -376,6 +391,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         const now = performance.now();
         if (now - lastDashTime.current > 1000) { // 1 second cooldown
           lastDashTime.current = now;
+          window.dispatchEvent(new CustomEvent('playerDash'));
           
           dashDir.copy(direction);
           if (dashDir.lengthSq() > 0) dashDir.normalize();
@@ -483,9 +499,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       
       {/* Attach Gun to Camera */}
       {createPortal(
-        <group position={[0.3, -0.3, -0.5]}>
-          <WeaponModel type={me?.weapon} color={me?.color || '#fff'} />
-        </group>,
+        <FirstPersonWeapon weapon={me?.weapon || 'DEFAULT'} color={me?.color || '#fff'} />,
         camera
       )}
 

@@ -137,16 +137,25 @@ function Explosion({ position, radius }: { position: [number, number, number], r
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshBasicMaterial>(null);
 
-  useFrame(() => {
+  useEffect(() => {
+    if (meshRef.current) {
+      meshRef.current.scale.setScalar(radius / 2);
+    }
+    if (materialRef.current) {
+      materialRef.current.opacity = 0.8;
+    }
+  }, [radius]);
+
+  useFrame((state, delta) => {
     if (meshRef.current && materialRef.current) {
-      meshRef.current.scale.addScalar(0.5);
-      materialRef.current.opacity = Math.max(0, materialRef.current.opacity - 0.05);
+      meshRef.current.scale.addScalar(delta * radius);
+      materialRef.current.opacity = Math.max(0, materialRef.current.opacity - delta * 2);
     }
   });
 
   return (
-    <mesh ref={meshRef} position={position} geometry={explosionGeo} scale={[radius / 4, radius / 4, radius / 4]}>
-      <meshBasicMaterial ref={materialRef} color="#ff4400" transparent opacity={0.8} blending={THREE.AdditiveBlending} />
+    <mesh ref={meshRef} position={position} geometry={explosionGeo} frustumCulled={false}>
+      <meshBasicMaterial ref={materialRef} color="#ff4400" transparent blending={THREE.AdditiveBlending} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
     </mesh>
   );
 }
@@ -413,7 +422,7 @@ function ObstacleChunk({ data }: { data: any }) {
           }}
         />
       </instancedMesh>
-      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={false}>
+      <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[wireframeMatrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />

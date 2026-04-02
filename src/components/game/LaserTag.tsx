@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/gameStore';
@@ -8,6 +8,7 @@ import { LocalPlayer } from './LocalPlayer';
 import { RemotePlayer } from './RemotePlayer';
 import { UI } from './UI';
 import { Entities } from './Entities';
+import { SpecialEvents } from './SpecialEvents';
 
 import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows } from '@react-three/drei';
 
@@ -47,6 +48,8 @@ function GameSettings() {
   return null;
 }
 
+import { WeaponModel } from './WeaponModel';
+
 const laserGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 
 const laserMaterials: Record<string, THREE.MeshBasicMaterial> = {};
@@ -58,10 +61,13 @@ function getLaserMaterial(color: string) {
 }
 
 function Laser({ laser }: { laser: any }) {
-  const ref = useRef<THREE.Mesh>(null);
+  const ref = useRef<THREE.Group>(null);
+  const startTime = useRef(performance.now());
   
+  // For lasers, we just set the position and scale once.
+  // For knives, we will animate them in useFrame.
   useEffect(() => {
-    if (!ref.current) return;
+    if (!ref.current || laser.weapon === 'KNIFE') return;
     const from = new THREE.Vector3(...laser.from);
     const to = new THREE.Vector3(...laser.to);
     const distance = from.distanceTo(to);
@@ -72,8 +78,42 @@ function Laser({ laser }: { laser: any }) {
     ref.current.scale.set(0.05, distance, 0.05);
   }, [laser]);
 
+  useFrame(() => {
+    if (!ref.current || laser.weapon !== 'KNIFE') return;
+    
+    const from = new THREE.Vector3(...laser.from);
+    const to = new THREE.Vector3(...laser.to);
+    
+    const elapsed = performance.now() - startTime.current;
+    const progress = Math.min(elapsed / 100, 1); // 100ms duration
+    
+    const currentPos = from.clone().lerp(to, progress);
+    ref.current.position.copy(currentPos);
+    
+    // Point the knife towards the target
+    ref.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+    
+    // Add tumbling effect by rotating around the local X axis
+    // It should spin multiple times during the 100ms
+    ref.current.rotateX(progress * Math.PI * 8); 
+  });
+
+  if (laser.weapon === 'KNIFE') {
+    return (
+      <group ref={ref}>
+        {/* Rotate the knife so the blade points in the direction of travel (Y axis in this local space) */}
+        {/* We also add a spin effect around the local X axis to make it look like it's tumbling */}
+        <group rotation={[Math.PI / 2, 0, 0]}>
+          <WeaponModel type="KNIFE" color={laser.color} />
+        </group>
+      </group>
+    );
+  }
+
   return (
-    <mesh ref={ref} geometry={laserGeo} material={getLaserMaterial(laser.color)} />
+    <group ref={ref}>
+      <mesh geometry={laserGeo} material={getLaserMaterial(laser.color)} />
+    </group>
   );
 }
 
@@ -151,6 +191,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const fpsLimit = useGameStore((state) => state.fpsLimit);
   const showFps = useGameStore((state) => state.showFps);
   const gameState = useGameStore((state) => state.gameState);
+  const banned = useGameStore((state) => state.banned);
   const [dpr, setDpr] = useState(1);
 
   const [isMobile, setIsMobile] = useState(false);
@@ -160,6 +201,15 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
     connect(nickname, isAdmin, gameMode, difficulty);
     return () => disconnect();
   }, [connect, disconnect, nickname, isAdmin, gameMode, difficulty]);
+
+  if (banned) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-black text-red-500 font-mono text-xl">
+        <h1 className="text-4xl font-bold mb-4">YOU HAVE BEEN BANNED</h1>
+        <p>You were removed from the server by an administrator.</p>
+      </div>
+    );
+  }
 
   if (!myId) {
     return (
@@ -174,7 +224,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
       {gameState === 'lobby' && <TeamLobby />}
       <Canvas 
         shadows={{ type: THREE.PCFShadowMap }} 
-        camera={{ fov: 75, far: renderDistance }} 
+        camera={{ fov: 75, near: 0.01, far: renderDistance }} 
         dpr={dynamicResolution ? dpr : 1}
         frameloop={fpsLimit > 0 ? 'demand' : 'always'}
         gl={{ powerPreference: "high-performance", antialias: false }}
@@ -199,6 +249,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
           <LocalPlayer isMobile={isMobile} />
           <RemotePlayers />
           <Entities />
+          <SpecialEvents />
         </Physics>
 
         {/* Lasers */}

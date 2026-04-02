@@ -44,6 +44,13 @@ interface EntityState {
   invulnerable?: boolean;
 }
 
+interface SpecialEvent {
+  type: 'tornado' | 'fog' | 'lava' | 'meteorite';
+  duration: number;
+  startTime: number;
+  targets?: { x: number, z: number }[];
+}
+
 interface GameStore {
   socket: Socket | null;
   players: Record<string, PlayerState>;
@@ -66,6 +73,8 @@ interface GameStore {
   gameState: 'lobby' | 'playing';
   teams: Record<string, string>;
   votesToStart: string[];
+  activeEvent: SpecialEvent | null;
+  eventsEnabled: boolean;
   adminState: {
     infiniteHealth: boolean;
     flying: boolean;
@@ -82,6 +91,7 @@ interface GameStore {
   setFpsLimit: (val: number) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
+  banned: boolean;
   setBoss: (boss: { id: string, health: number, maxHealth: number } | null) => void;
   updateBossHealth: (health: number) => void;
   setInteractable: (interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null) => void;
@@ -107,8 +117,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   medkits: {},
   explosions: [],
   myId: null,
-  sensitivity: 1.0,
-  renderDistance: 100,
+  sensitivity: 4.0,
+  renderDistance: 250,
   dynamicResolution: true,
   showFps: false,
   fpsLimit: 0,
@@ -119,7 +129,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   gameState: 'playing',
   teams: {},
   votesToStart: [],
+  activeEvent: null,
+  eventsEnabled: true,
   victory: false,
+  banned: false,
   interactable: null,
   adminState: {
     infiniteHealth: false,
@@ -167,7 +180,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Connect to the same host/port
     const socket = io({ query: { nickname, isAdmin, gameMode, difficulty } });
 
-    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, seed, boss, state, teams, votesToStart }) => {
+    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, seed, boss, state, teams, votesToStart, activeEvent, eventsEnabled }) => {
       set({ 
         players, 
         weapons, 
@@ -179,8 +192,22 @@ export const useGameStore = create<GameStore>((set, get) => ({
         boss: boss || null,
         gameState: state || 'playing',
         teams: teams || {},
-        votesToStart: votesToStart || []
+        votesToStart: votesToStart || [],
+        activeEvent: activeEvent || null,
+        eventsEnabled: eventsEnabled !== undefined ? eventsEnabled : true
       });
+    });
+
+    socket.on('eventsToggled', (enabled: boolean) => {
+      set({ eventsEnabled: enabled });
+    });
+
+    socket.on('specialEvent', (event) => {
+      set({ activeEvent: event });
+    });
+
+    socket.on('specialEventEnded', () => {
+      set({ activeEvent: null });
     });
 
     socket.on('teamsUpdated', (teams) => {
@@ -287,6 +314,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
       });
     });
 
+    socket.on('playerWeaponChanged', ({ id, weapon }) => {
+      set((state) => {
+        if (!state.players[id]) return state;
+        return {
+          players: {
+            ...state.players,
+            [id]: { ...state.players[id], weapon }
+          }
+        };
+      });
+    });
+
     socket.on('explosion', (exp) => {
       const id = Math.random().toString(36).substring(7);
       get().addExplosion({ ...exp, id });
@@ -360,6 +399,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       set((state) => ({
         players: { ...state.players, [player.id]: player }
       }));
+    });
+
+    socket.on('banned', () => {
+      set({ banned: true });
     });
 
     socket.on('scoreUpdated', ({ id, score }) => {
