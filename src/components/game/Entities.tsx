@@ -4,37 +4,17 @@ import { useGameStore } from '../../store/gameStore';
 import * as THREE from 'three';
 import { Detailed } from '@react-three/drei';
 
-const lightbulbMaterial = new THREE.MeshStandardMaterial({
-  color: '#ffffaa',
-  emissive: '#ffffaa',
-  emissiveIntensity: 2,
-  roughness: 0.2,
-  metalness: 0.8
-});
+const lightbulbMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ffffaa' });
+const droneMaterialBasic = new THREE.MeshBasicMaterial({ color: '#444444' });
+const droneEyeMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ff0000' });
+const mechMaterialBasic = new THREE.MeshBasicMaterial({ color: '#2a2a2a' });
+const mechAccentMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ff8800' });
 
-const droneMaterial = new THREE.MeshStandardMaterial({
-  color: '#444444',
-  roughness: 0.6,
-  metalness: 0.8
-});
-
-const droneEyeMaterial = new THREE.MeshStandardMaterial({
-  color: '#ff0000',
-  emissive: '#ff0000',
-  emissiveIntensity: 2
-});
-
-const mechMaterial = new THREE.MeshStandardMaterial({
-  color: '#2a2a2a',
-  roughness: 0.8,
-  metalness: 0.5
-});
-
-const mechAccentMaterial = new THREE.MeshStandardMaterial({
-  color: '#ff8800',
-  emissive: '#ff8800',
-  emissiveIntensity: 2
-});
+const lightbulbMaterialStd = new THREE.MeshStandardMaterial({ color: '#ffffaa', emissive: '#ffffaa', emissiveIntensity: 0.5 });
+const droneMaterialStd = new THREE.MeshStandardMaterial({ color: '#444444', roughness: 0.7, metalness: 0.5 });
+const droneEyeMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff0000', emissive: '#ff0000', emissiveIntensity: 1 });
+const mechMaterialStd = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.8, metalness: 0.6 });
+const mechAccentMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 });
 
 // Reusable frustum culling hook
 function useFrustumCulling(ref: React.RefObject<THREE.Object3D>, radius: number = 5) {
@@ -57,6 +37,10 @@ function Lightbulb({ entity }: { entity: any }) {
   const ring1Ref = useRef<THREE.Mesh>(null);
   const ring2Ref = useRef<THREE.Mesh>(null);
   const pos = new THREE.Vector3();
+  const enableLighting = useGameStore(state => state.enableLighting);
+
+  const lightbulbMaterial = enableLighting ? lightbulbMaterialStd : lightbulbMaterialBasic;
+  const droneMaterial = enableLighting ? droneMaterialStd : droneMaterialBasic;
 
   useFrustumCulling(ref, 3);
 
@@ -82,34 +66,33 @@ function Lightbulb({ entity }: { entity: any }) {
       <Detailed distances={[0, 30, 80]}>
         {/* High Detail */}
         <group>
-          <mesh material={lightbulbMaterial} castShadow>
+          <mesh castShadow={enableLighting} material={lightbulbMaterial}>
             <icosahedronGeometry args={[0.8, 2]} />
           </mesh>
-          <mesh ref={ring1Ref} material={droneMaterial} castShadow>
+          <mesh castShadow={enableLighting} ref={ring1Ref} material={droneMaterial}>
             <torusGeometry args={[1.2, 0.05, 8, 32]} />
           </mesh>
-          <mesh ref={ring2Ref} material={droneMaterial} castShadow>
+          <mesh castShadow={enableLighting} ref={ring2Ref} material={droneMaterial}>
             <torusGeometry args={[1.4, 0.05, 8, 32]} />
           </mesh>
         </group>
         {/* Medium Detail */}
         <group>
-          <mesh material={lightbulbMaterial} castShadow>
+          <mesh castShadow={enableLighting} material={lightbulbMaterial}>
             <icosahedronGeometry args={[0.8, 1]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow>
+          <mesh castShadow={enableLighting} material={droneMaterial}>
             <torusGeometry args={[1.2, 0.05, 4, 16]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow>
+          <mesh castShadow={enableLighting} material={droneMaterial}>
             <torusGeometry args={[1.4, 0.05, 4, 16]} />
           </mesh>
         </group>
         {/* Low Detail */}
-        <mesh material={lightbulbMaterial} castShadow>
+        <mesh castShadow={enableLighting} material={lightbulbMaterial}>
           <boxGeometry args={[1.2, 1.2, 1.2]} />
         </mesh>
       </Detailed>
-      <pointLight color="#ffffaa" intensity={2} distance={20} />
       {/* Health bar */}
       <mesh position={[0, 2, 0]}>
         <planeGeometry args={[2 * (entity.health / 50), 0.2]} />
@@ -123,6 +106,10 @@ function Drone({ entity }: { entity: any }) {
   const ref = useRef<THREE.Group>(null);
   const pos = new THREE.Vector3();
   const dummy = new THREE.Object3D();
+  const enableLighting = useGameStore(state => state.enableLighting);
+
+  const droneMaterial = enableLighting ? droneMaterialStd : droneMaterialBasic;
+  const droneEyeMaterial = enableLighting ? droneEyeMaterialStd : droneEyeMaterialBasic;
 
   useFrustumCulling(ref, 4);
 
@@ -162,42 +149,42 @@ function Drone({ entity }: { entity: any }) {
       <Detailed distances={[0, 40, 100]}>
         {/* High Detail */}
         <group rotation={[0, Math.PI, 0]}>
-          <mesh material={droneMaterial} castShadow rotation={[Math.PI / 2, 0, 0]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.8, 0.8, 0.6, 16]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[0.4, -0.2, 0.8]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[0.4, -0.2, 0.8]}>
             <boxGeometry args={[0.1, 0.1, 0.6]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[-0.4, -0.2, 0.8]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[-0.4, -0.2, 0.8]}>
             <boxGeometry args={[0.1, 0.1, 0.6]} />
           </mesh>
           <mesh material={droneEyeMaterial} position={[0, 0, 0.81]}>
             <planeGeometry args={[0.6, 0.2]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[1.2, 0.2, -0.2]} rotation={[0, 0, -0.2]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[1.2, 0.2, -0.2]} rotation={[0, 0, -0.2]}>
             <boxGeometry args={[1.5, 0.05, 0.8]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[-1.2, 0.2, -0.2]} rotation={[0, 0, 0.2]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[-1.2, 0.2, -0.2]} rotation={[0, 0, 0.2]}>
             <boxGeometry args={[1.5, 0.05, 0.8]} />
           </mesh>
         </group>
         {/* Medium Detail */}
         <group rotation={[0, Math.PI, 0]}>
-          <mesh material={droneMaterial} castShadow rotation={[Math.PI / 2, 0, 0]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.8, 0.8, 0.6, 8]} />
           </mesh>
           <mesh material={droneEyeMaterial} position={[0, 0, 0.81]}>
             <planeGeometry args={[0.6, 0.2]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[1.2, 0.2, -0.2]} rotation={[0, 0, -0.2]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[1.2, 0.2, -0.2]} rotation={[0, 0, -0.2]}>
             <boxGeometry args={[1.5, 0.05, 0.8]} />
           </mesh>
-          <mesh material={droneMaterial} castShadow position={[-1.2, 0.2, -0.2]} rotation={[0, 0, 0.2]}>
+          <mesh castShadow={enableLighting} material={droneMaterial} position={[-1.2, 0.2, -0.2]} rotation={[0, 0, 0.2]}>
             <boxGeometry args={[1.5, 0.05, 0.8]} />
           </mesh>
         </group>
         {/* Low Detail */}
-        <mesh material={droneMaterial} castShadow>
+        <mesh castShadow={enableLighting} material={droneMaterial}>
           <boxGeometry args={[2.5, 0.6, 1.6]} />
         </mesh>
       </Detailed>
@@ -219,6 +206,10 @@ function Mech({ entity }: { entity: any }) {
   const rightArmRef = useRef<THREE.Group>(null);
   const pos = new THREE.Vector3();
   const dummy = new THREE.Object3D();
+  const enableLighting = useGameStore(state => state.enableLighting);
+
+  const mechMaterial = enableLighting ? mechMaterialStd : mechMaterialBasic;
+  const mechAccentMaterial = enableLighting ? mechAccentMaterialStd : mechAccentMaterialBasic;
 
   useFrustumCulling(ref, 5);
 
@@ -289,17 +280,17 @@ function Mech({ entity }: { entity: any }) {
       <Detailed distances={[0, 50, 120]}>
         {/* High Detail */}
         <group rotation={[0, Math.PI, 0]}>
-          <mesh material={mechMaterial} castShadow position={[0, 0.8, 0]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0, 0.8, 0]}>
             <boxGeometry args={[1.2, 1, 1.2]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[0, 1.5, 0.2]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0, 1.5, 0.2]}>
             <boxGeometry args={[0.6, 0.5, 0.8]} />
           </mesh>
           <mesh material={mechAccentMaterial} position={[0, 1.5, 0.61]}>
             <planeGeometry args={[0.4, 0.15]} />
           </mesh>
           <group ref={leftArmRef} position={[0.8, 1.0, 0]}>
-            <mesh material={mechMaterial} castShadow position={[0, -0.4, 0.2]}>
+            <mesh castShadow={enableLighting} material={mechMaterial} position={[0, -0.4, 0.2]}>
               <boxGeometry args={[0.4, 0.8, 0.4]} />
             </mesh>
             <mesh material={mechAccentMaterial} position={[0, -0.8, 0.41]}>
@@ -307,7 +298,7 @@ function Mech({ entity }: { entity: any }) {
             </mesh>
           </group>
           <group ref={rightArmRef} position={[-0.8, 1.0, 0]}>
-            <mesh material={mechMaterial} castShadow position={[0, -0.4, 0.2]}>
+            <mesh castShadow={enableLighting} material={mechMaterial} position={[0, -0.4, 0.2]}>
               <boxGeometry args={[0.4, 0.8, 0.4]} />
             </mesh>
             <mesh material={mechAccentMaterial} position={[0, -0.8, 0.41]}>
@@ -315,39 +306,39 @@ function Mech({ entity }: { entity: any }) {
             </mesh>
           </group>
           <group position={[0.4, 0.8, 0]}>
-            <mesh ref={leftLegRef} material={mechMaterial} castShadow position={[0, -0.6, 0]}>
+            <mesh castShadow={enableLighting} ref={leftLegRef} material={mechMaterial} position={[0, -0.6, 0]}>
               <boxGeometry args={[0.3, 1.2, 0.3]} />
             </mesh>
           </group>
           <group position={[-0.4, 0.8, 0]}>
-            <mesh ref={rightLegRef} material={mechMaterial} castShadow position={[0, -0.6, 0]}>
+            <mesh castShadow={enableLighting} ref={rightLegRef} material={mechMaterial} position={[0, -0.6, 0]}>
               <boxGeometry args={[0.3, 1.2, 0.3]} />
             </mesh>
           </group>
         </group>
         {/* Medium Detail */}
         <group rotation={[0, Math.PI, 0]}>
-          <mesh material={mechMaterial} castShadow position={[0, 0.8, 0]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0, 0.8, 0]}>
             <boxGeometry args={[1.2, 1, 1.2]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[0, 1.5, 0.2]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0, 1.5, 0.2]}>
             <boxGeometry args={[0.6, 0.5, 0.8]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[0.8, 0.6, 0.2]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0.8, 0.6, 0.2]}>
             <boxGeometry args={[0.4, 0.8, 0.4]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[-0.8, 0.6, 0.2]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[-0.8, 0.6, 0.2]}>
             <boxGeometry args={[0.4, 0.8, 0.4]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[0.4, 0.2, 0]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[0.4, 0.2, 0]}>
             <boxGeometry args={[0.3, 1.2, 0.3]} />
           </mesh>
-          <mesh material={mechMaterial} castShadow position={[-0.4, 0.2, 0]}>
+          <mesh castShadow={enableLighting} material={mechMaterial} position={[-0.4, 0.2, 0]}>
             <boxGeometry args={[0.3, 1.2, 0.3]} />
           </mesh>
         </group>
         {/* Low Detail */}
-        <mesh material={mechMaterial} castShadow position={[0, 0.8, 0]}>
+        <mesh castShadow={enableLighting} material={mechMaterial} position={[0, 0.8, 0]}>
           <boxGeometry args={[2, 2.5, 1.5]} />
         </mesh>
       </Detailed>
@@ -366,6 +357,7 @@ function Boss({ entity }: { entity: any }) {
   const coreRef = useRef<THREE.Mesh>(null);
   const ring1Ref = useRef<THREE.Mesh>(null);
   const ring2Ref = useRef<THREE.Mesh>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
 
   useFrustumCulling(groupRef, 15);
 
@@ -392,22 +384,25 @@ function Boss({ entity }: { entity: any }) {
     }
   });
 
+  const CoreMaterial = enableLighting ? 'meshStandardMaterial' : 'meshBasicMaterial';
+  const RingMaterial = enableLighting ? 'meshStandardMaterial' : 'meshBasicMaterial';
+
   return (
     <group ref={groupRef} position={[entity.x, entity.y, entity.z]}>
       <Detailed distances={[0, 100, 250]}>
         {/* High Detail */}
         <group>
-          <mesh ref={coreRef} castShadow>
+          <mesh castShadow={enableLighting} ref={coreRef}>
             <octahedronGeometry args={[4, 2]} />
-            <meshStandardMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={2} wireframe={entity.invulnerable} />
+            <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} wireframe={entity.invulnerable} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
-          <mesh ref={ring1Ref}>
+          <mesh castShadow={enableLighting} ref={ring1Ref}>
             <torusGeometry args={[6, 0.5, 16, 64]} />
-            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={1} />
+            <RingMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
-          <mesh ref={ring2Ref}>
+          <mesh castShadow={enableLighting} ref={ring2Ref}>
             <torusGeometry args={[8, 0.3, 16, 64]} />
-            <meshStandardMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={1} />
+            <RingMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
           {entity.invulnerable && (
             <mesh>
@@ -418,17 +413,17 @@ function Boss({ entity }: { entity: any }) {
         </group>
         {/* Medium Detail */}
         <group>
-          <mesh castShadow>
+          <mesh castShadow={enableLighting}>
             <octahedronGeometry args={[4, 0]} />
-            <meshStandardMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={2} wireframe={entity.invulnerable} />
+            <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} wireframe={entity.invulnerable} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
-          <mesh>
+          <mesh castShadow={enableLighting}>
             <torusGeometry args={[6, 0.5, 8, 32]} />
-            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={1} />
+            <RingMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
-          <mesh>
+          <mesh castShadow={enableLighting}>
             <torusGeometry args={[8, 0.3, 8, 32]} />
-            <meshStandardMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={1} />
+            <RingMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
           </mesh>
           {entity.invulnerable && (
             <mesh>
@@ -438,9 +433,9 @@ function Boss({ entity }: { entity: any }) {
           )}
         </group>
         {/* Low Detail */}
-        <mesh castShadow>
+        <mesh castShadow={enableLighting}>
           <boxGeometry args={[12, 12, 12]} />
-          <meshStandardMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={2} />
+          <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
         </mesh>
       </Detailed>
       

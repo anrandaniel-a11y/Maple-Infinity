@@ -190,6 +190,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const dynamicResolution = useGameStore((state) => state.dynamicResolution);
   const fpsLimit = useGameStore((state) => state.fpsLimit);
   const showFps = useGameStore((state) => state.showFps);
+  const enableLighting = useGameStore((state) => state.enableLighting);
   const gameState = useGameStore((state) => state.gameState);
   const banned = useGameStore((state) => state.banned);
   const [dpr, setDpr] = useState(1);
@@ -223,7 +224,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
     <div className="w-full h-screen bg-black relative overflow-hidden touch-none">
       {gameState === 'lobby' && <TeamLobby />}
       <Canvas 
-        shadows={{ type: THREE.PCFShadowMap }} 
+        shadows={enableLighting}
         camera={{ fov: 75, near: 0.01, far: renderDistance }} 
         dpr={dynamicResolution ? dpr : 1}
         frameloop={fpsLimit > 0 ? 'demand' : 'always'}
@@ -237,12 +238,27 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
             <AdaptiveDpr pixelated />
           </>
         )}
-        <BakeShadows />
         <color attach="background" args={['#050505']} />
         <fog attach="fog" args={['#050505', renderDistance * 0.2, renderDistance]} />
-        
-        <ambientLight intensity={0.5} />
-        <directionalLight castShadow position={[10, 20, 10]} intensity={0.8} />
+
+        {enableLighting && (
+          <>
+            <ambientLight intensity={0.5} />
+            <directionalLight 
+              position={[100, 200, 100]} 
+              intensity={1} 
+              castShadow 
+              shadow-mapSize-width={2048}
+              shadow-mapSize-height={2048}
+              shadow-camera-left={-200}
+              shadow-camera-right={200}
+              shadow-camera-top={200}
+              shadow-camera-bottom={-200}
+              shadow-camera-near={0.5}
+              shadow-camera-far={500}
+            />
+          </>
+        )}
 
         <Physics gravity={[0, -9.81, 0]}>
           <Map />

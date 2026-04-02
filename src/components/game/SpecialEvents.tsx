@@ -59,11 +59,13 @@ function Tornado() {
     }
   });
 
+  const enableLighting = useGameStore(state => state.enableLighting);
+
   return (
     <group ref={ref}>
-      <mesh position={[0, 20, 0]}>
+      <mesh castShadow={enableLighting} position={[0, 20, 0]}>
         <cylinderGeometry args={[15, 2, 40, 16]} />
-        <meshStandardMaterial color="#555555" transparent opacity={0.8} />
+        {enableLighting ? <meshStandardMaterial color="#555555" transparent opacity={0.8} /> : <meshBasicMaterial color="#555555" transparent opacity={0.8} />}
       </mesh>
     </group>
   );
@@ -139,12 +141,14 @@ function LavaSpots() {
     }
   });
 
+  const enableLighting = useGameStore(state => state.enableLighting);
+
   return (
     <group>
       {spots.map((spot, i) => (
-        <mesh key={i} position={[spot.x, 0.1, spot.z]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh receiveShadow={enableLighting} key={i} position={[spot.x, 0.1, spot.z]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[spot.radius, 32]} />
-          <meshStandardMaterial color="#ff3300" emissive="#ff0000" emissiveIntensity={2} />
+          {enableLighting ? <meshStandardMaterial color="#ff3300" emissive="#ff3300" emissiveIntensity={0.5} /> : <meshBasicMaterial color="#ff3300" />}
         </mesh>
       ))}
     </group>
@@ -157,12 +161,15 @@ function Meteorites() {
   const socket = useGameStore(state => state.socket);
   const seed = useGameStore(state => state.seed);
   const activeEvent = useGameStore(state => state.activeEvent);
+  const enableLighting = useGameStore(state => state.enableLighting);
   const groupRef = useRef<THREE.Group>(null);
   const meteors = useRef<any[]>([]);
   const lastSpawnTime = useRef(0);
 
   const geometry = useMemo(() => new THREE.SphereGeometry(2, 16, 16), []);
-  const material = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff4400', emissiveIntensity: 2 }), []);
+  const materialBasic = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ff8800' }), []);
+  const materialStd = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 }), []);
+  const material = enableLighting ? materialStd : materialBasic;
 
   useEffect(() => {
     return () => {
@@ -172,9 +179,10 @@ function Meteorites() {
         }
       }
       geometry.dispose();
-      material.dispose();
+      materialBasic.dispose();
+      materialStd.dispose();
     };
-  }, [geometry, material]);
+  }, [geometry, materialBasic, materialStd]);
 
   useFrame((state, delta) => {
     if (!groupRef.current || !activeEvent) return;
@@ -236,6 +244,7 @@ function Meteorites() {
     for (const m of nextMeteors) {
       if (!m.mesh) {
         const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = enableLighting;
         mesh.position.set(m.x, m.y, m.z);
         groupRef.current.add(mesh);
         m.mesh = mesh;

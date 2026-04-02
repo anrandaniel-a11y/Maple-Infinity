@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import { useFrame, useThree, createPortal } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody, useRapier, CapsuleCollider } from '@react-three/rapier';
 import { Vector3, Vector2, Euler, Quaternion, Raycaster } from 'three';
 import { PointerLockControls } from '@react-three/drei';
@@ -35,9 +35,16 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     sensitivityRef.current = sensitivity;
   }, [sensitivity]);
 
+  // We use primitive to add the camera to the scene graph so portals attached to it are rendered
+  // This avoids manual scene.add(camera) which can cause circular dependency errors in R3F
+  
   useEffect(() => {
-    scene.add(camera);
-    return () => { scene.remove(camera); };
+    // Cleanup any manual additions just in case
+    return () => {
+      if (camera.parent === scene) {
+        scene.remove(camera);
+      }
+    };
   }, [camera, scene]);
 
   const keysRef = useRef({ w: false, a: false, s: false, d: false, space: false, shift: false });
@@ -273,7 +280,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     }
 
     // Fallback respawn if falling through map
-    if (!adminState.noclip && pos.y < -50) {
+    if (!adminState.noclip && pos.y < -150) {
       bodyRef.current.setTranslation({ x: (Math.random() - 0.5) * 2000, y: 60, z: (Math.random() - 0.5) * 2000 }, true);
       bodyRef.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
       return;
@@ -495,13 +502,11 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
   return (
     <>
+      <primitive object={camera} />
       {!isMobile && <PointerLockControls pointerSpeed={sensitivity} />}
       
       {/* Attach Gun to Camera */}
-      {createPortal(
-        <FirstPersonWeapon weapon={me?.weapon || 'DEFAULT'} color={me?.color || '#fff'} />,
-        camera
-      )}
+      <FirstPersonWeapon weapon={me?.weapon || 'DEFAULT'} color={me?.color || '#fff'} />
 
       <RigidBody ref={bodyRef} colliders={false} mass={1} type="dynamic" position={[me?.x || 0, me?.y || 100, me?.z || 0]} enabledRotations={[false, false, false]} friction={0} restitution={0} ccd gravityScale={2.5}>
         <CapsuleCollider args={[0.5, 0.4]} friction={0} restitution={0} sensor={adminState.noclip} />

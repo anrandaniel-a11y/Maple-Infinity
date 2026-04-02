@@ -20,13 +20,6 @@ export function FirstPersonWeapon({ weapon, color }: { weapon: string, color: st
   const smoothedAngVel = useRef(new THREE.Vector2(0, 0));
 
   useEffect(() => {
-    // Ensure the camera is in the scene graph so its children are rendered
-    if (camera && scene && camera.parent !== scene) {
-      scene.add(camera);
-    }
-  }, [camera, scene]);
-
-  useEffect(() => {
     const handleShoot = () => {
       recoilRef.current = 1.0;
       lastShootTime.current = performance.now();

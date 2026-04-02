@@ -22,25 +22,25 @@ export function Map() {
           <RigidBody type="fixed">
             <mesh position={[0, 50, 60]}>
               <boxGeometry args={[120, 100, 2]} />
-              <meshStandardMaterial color="#ff0000" transparent opacity={0.2} />
+              <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
             <mesh position={[0, 50, -60]}>
               <boxGeometry args={[120, 100, 2]} />
-              <meshStandardMaterial color="#ff0000" transparent opacity={0.2} />
+              <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
             <mesh position={[60, 50, 0]}>
               <boxGeometry args={[2, 100, 120]} />
-              <meshStandardMaterial color="#ff0000" transparent opacity={0.2} />
+              <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
             <mesh position={[-60, 50, 0]}>
               <boxGeometry args={[2, 100, 120]} />
-              <meshStandardMaterial color="#ff0000" transparent opacity={0.2} />
+              <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
         </group>
@@ -54,11 +54,15 @@ export function Map() {
 }
 
 const weaponBaseGeo = new THREE.CylinderGeometry(1, 1, 0.1, 16);
-const weaponBaseMat = new THREE.MeshBasicMaterial({ color: '#ffff00', transparent: true, opacity: 0.3 });
+const weaponBaseMatBasic = new THREE.MeshBasicMaterial({ color: '#ffff00', transparent: true, opacity: 0.3 });
+const weaponBaseMatStd = new THREE.MeshStandardMaterial({ color: '#ffff00', transparent: true, opacity: 0.3, emissive: '#ffff00', emissiveIntensity: 0.5 });
 
 function Weapons() {
   const weapons = useGameStore((state) => state.weapons);
+  const enableLighting = useGameStore((state) => state.enableLighting);
   const groupRef = useRef<THREE.Group>(null);
+
+  const weaponBaseMat = enableLighting ? weaponBaseMatStd : weaponBaseMatBasic;
 
   useFrame((state) => {
     if (groupRef.current) {
@@ -76,7 +80,7 @@ function Weapons() {
         return (
           <group key={w.id} position={[w.x, w.y, w.z]}>
             <WeaponModel type={w.type} />
-            <mesh position={[0, -0.5, 0]} geometry={weaponBaseGeo} material={weaponBaseMat} />
+            <mesh castShadow={enableLighting} position={[0, -0.5, 0]} geometry={weaponBaseGeo} material={weaponBaseMat} />
           </group>
         );
       })}
@@ -85,14 +89,21 @@ function Weapons() {
 }
 
 const medkitGeo = new THREE.BoxGeometry(1.2, 0.8, 1.2);
-const medkitMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 });
+const medkitMatBasic = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+const medkitMatStd = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.5 });
 const medkitCrossGeo = new THREE.BoxGeometry(0.8, 0.82, 0.3);
 const medkitCrossGeo2 = new THREE.BoxGeometry(0.3, 0.82, 0.8);
-const medkitCrossMat = new THREE.MeshBasicMaterial({ color: '#ff0000' });
+const medkitCrossMatBasic = new THREE.MeshBasicMaterial({ color: '#ff0000' });
+const medkitCrossMatStd = new THREE.MeshStandardMaterial({ color: '#ff0000', emissive: '#ff0000', emissiveIntensity: 0.5 });
 
 function Medkits() {
   const medkits = useGameStore((state) => state.medkits);
+  const enableLighting = useGameStore((state) => state.enableLighting);
   const groupRef = useRef<THREE.Group>(null);
+
+  const medkitMat = enableLighting ? medkitMatStd : medkitMatBasic;
+  const medkitCrossMat = enableLighting ? medkitCrossMatStd : medkitCrossMatBasic;
+  const weaponBaseMat = enableLighting ? weaponBaseMatStd : weaponBaseMatBasic;
 
   useFrame((state) => {
     if (groupRef.current) {
@@ -109,10 +120,10 @@ function Medkits() {
         if (!m.active) return null;
         return (
           <group key={m.id} position={[m.x, m.y, m.z]}>
-            <mesh geometry={medkitGeo} material={medkitMat} />
-            <mesh geometry={medkitCrossGeo} material={medkitCrossMat} />
-            <mesh geometry={medkitCrossGeo2} material={medkitCrossMat} />
-            <mesh position={[0, -0.5, 0]} geometry={weaponBaseGeo} material={weaponBaseMat} />
+            <mesh castShadow={enableLighting} geometry={medkitGeo} material={medkitMat} />
+            <mesh castShadow={enableLighting} geometry={medkitCrossGeo} material={medkitCrossMat} />
+            <mesh castShadow={enableLighting} geometry={medkitCrossGeo2} material={medkitCrossMat} />
+            <mesh castShadow={enableLighting} position={[0, -0.5, 0]} geometry={weaponBaseGeo} material={weaponBaseMat} />
           </group>
         );
       })}
@@ -199,11 +210,12 @@ const GLOBAL_TERRAIN_GEOMETRY = generateTerrainGeometry();
 
 function Terrain() {
   const geometry = GLOBAL_TERRAIN_GEOMETRY;
+  const enableLighting = useGameStore((state) => state.enableLighting);
 
   return (
     <RigidBody type="fixed" colliders="trimesh" friction={0.8}>
-      <mesh geometry={geometry} receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.8} metalness={0.5} emissive="#444" emissiveIntensity={1.2} />
+      <mesh receiveShadow={enableLighting} geometry={geometry}>
+        {enableLighting ? <meshStandardMaterial vertexColors roughness={0.8} metalness={0.2} /> : <meshBasicMaterial vertexColors />}
       </mesh>
       {/* Neon wireframe overlay for the terrain */}
       <mesh geometry={geometry} position={[0, 0.1, 0]}>
@@ -364,6 +376,7 @@ function ObstacleChunk({ data }: { data: any }) {
   const wireframeRef = useRef<THREE.InstancedMesh>(null);
   const groupRef = useRef<THREE.Group>(null);
   const renderDistance = useGameStore((state) => state.renderDistance);
+  const enableLighting = useGameStore((state) => state.enableLighting);
   
   const { matrices, wireframeMatrices, colorsArray, center } = data;
   const box = useMemo(() => {
@@ -401,26 +414,11 @@ function ObstacleChunk({ data }: { data: any }) {
           />
         ))}
       </RigidBody>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, data.positions.length]} castShadow receiveShadow frustumCulled={false}>
+      <instancedMesh castShadow={enableLighting} receiveShadow={enableLighting} ref={meshRef} args={[undefined, undefined, data.positions.length]} frustumCulled={false}>
         <instancedBufferAttribute attach="instanceMatrix" args={[matrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
-        <meshStandardMaterial 
-          color="#111"
-          roughness={0.2} 
-          metalness={0.8} 
-          onBeforeCompile={(shader) => {
-            shader.fragmentShader = shader.fragmentShader.replace(
-              '#include <emissivemap_fragment>',
-              `
-              #include <emissivemap_fragment>
-              #ifdef USE_INSTANCING_COLOR
-                totalEmissiveRadiance = vColor.rgb * 0.5;
-              #endif
-              `
-            );
-          }}
-        />
+        {enableLighting ? <meshStandardMaterial color="#333" roughness={0.7} metalness={0.1} /> : <meshBasicMaterial color="#111" />}
       </instancedMesh>
       <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[wireframeMatrices, 16]} />

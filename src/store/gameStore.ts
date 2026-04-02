@@ -66,6 +66,7 @@ interface GameStore {
   dynamicResolution: boolean;
   showFps: boolean;
   fpsLimit: number;
+  enableLighting: boolean;
   mapIndex: number;
   seed: number;
   gameMode: 'pvp' | 'pve' | 'team' | 'speed';
@@ -89,6 +90,7 @@ interface GameStore {
   setDynamicResolution: (val: boolean) => void;
   setShowFps: (val: boolean) => void;
   setFpsLimit: (val: number) => void;
+  setEnableLighting: (val: boolean) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
   banned: boolean;
@@ -122,6 +124,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dynamicResolution: true,
   showFps: false,
   fpsLimit: 0,
+  enableLighting: false,
   mapIndex: 0,
   seed: 0,
   gameMode: 'pvp',
@@ -146,6 +149,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setDynamicResolution: (val) => set({ dynamicResolution: val }),
   setShowFps: (val) => set({ showFps: val }),
   setFpsLimit: (val) => set({ fpsLimit: val }),
+  setEnableLighting: (val) => set({ enableLighting: val }),
 
   boss: null,
   setBoss: (boss) => set({ boss }),

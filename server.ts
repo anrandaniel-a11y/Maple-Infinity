@@ -1,8 +1,8 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
+import next from 'next';
 import { generateVolume, getHighestBlockY, getTerrainHeight } from './src/utils/mapGen.js';
 
 function dist2(v: any, w: any) {
@@ -1100,20 +1100,15 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true, hmr: false },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  const dev = process.env.NODE_ENV !== 'production';
+  const nextApp = next({ dev });
+  const handle = nextApp.getRequestHandler();
+
+  await nextApp.prepare();
+
+  app.all('*', (req, res) => {
+    return handle(req, res);
+  });
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

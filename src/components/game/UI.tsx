@@ -432,6 +432,15 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                 />
                 Show FPS
               </label>
+              <label className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-widest cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={useGameStore(state => state.enableLighting)}
+                  onChange={(e) => useGameStore.getState().setEnableLighting(e.target.checked)}
+                  className="accent-cyan-400"
+                />
+                Enable Lighting & Shadows
+              </label>
 
               <button
                 className="mt-2 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400 border border-cyan-500/50 rounded-lg p-3 font-bold uppercase tracking-widest text-sm transition-colors"
