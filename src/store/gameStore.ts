@@ -45,7 +45,7 @@ interface EntityState {
 }
 
 interface SpecialEvent {
-  type: 'tornado' | 'fog' | 'lava' | 'meteorite';
+  type: 'tornado' | 'lava' | 'meteorite';
   duration: number;
   startTime: number;
   targets?: { x: number, z: number }[];
@@ -273,7 +273,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (newEntities[id]) {
           newEntities[id] = { ...newEntities[id], health };
         }
-        const newBoss = state.boss?.id === id ? { ...state.boss, health } : state.boss;
+        let newBoss = state.boss;
+        if (newBoss && newBoss.id === id) {
+          newBoss = { ...newBoss, health };
+        }
         return { entities: newEntities, boss: newBoss };
       });
     });

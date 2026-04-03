@@ -156,7 +156,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       const rOrigin = rayOrigin.clone().add(rayDir.clone().multiplyScalar(0.5));
 
       if (weapon === 'SHOTGUN') {
-        const rays = [];
+        const rays: { from: number[], to: number[] }[] = [];
         for(let i=0; i<8; i++) {
            const rDir = rayDir.clone().add(new Vector3((Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 0.4)).normalize();
            const rRay = new rapier.Ray({ x: rOrigin.x, y: rOrigin.y, z: rOrigin.z }, { x: rDir.x, y: rDir.y, z: rDir.z });

@@ -178,7 +178,7 @@ const generateTerrainGeometry = () => {
   geo.rotateX(-Math.PI / 2);
   
   const pos = geo.attributes.position;
-  const colors = [];
+  const colors: number[] = [];
   const color = new THREE.Color();
   
   for (let i = 0; i < pos.count; i++) {

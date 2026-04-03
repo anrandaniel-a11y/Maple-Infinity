@@ -1,13 +1,17 @@
+'use client';
+
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import dynamic from 'next/dynamic';
 import { DynamicBackground } from './components/DynamicBackground';
 import { LogoGenerator } from './components/LogoGenerator';
 import { Countdown } from './components/Countdown';
 import { FeatureCard } from './components/FeatureCard';
 import { Login } from './components/Login';
 import { GameSelector } from './components/GameSelector';
-import { LaserTag } from './components/game/LaserTag';
 import { Calendar, MapPin, Zap, Users, Sparkles, Radio, ShieldCheck } from 'lucide-react';
+
+const LaserTag = dynamic(() => import('./components/game/LaserTag').then(mod => mod.LaserTag), { ssr: false });
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

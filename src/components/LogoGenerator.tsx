@@ -58,7 +58,7 @@ export function LogoGenerator() {
         },
       });
 
-      let generatedUrl = null;
+      let generatedUrl: string | null = null;
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
           generatedUrl = `data:image/png;base64,${part.inlineData.data}`;

@@ -17,7 +17,7 @@ const mechMaterialStd = new THREE.MeshStandardMaterial({ color: '#2a2a2a', rough
 const mechAccentMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 });
 
 // Reusable frustum culling hook
-function useFrustumCulling(ref: React.RefObject<THREE.Object3D>, radius: number = 5) {
+function useFrustumCulling(ref: React.RefObject<THREE.Object3D | null>, radius: number = 5) {
   const { camera } = useThree();
   const frustum = useRef(new THREE.Frustum());
   const projScreenMatrix = useRef(new THREE.Matrix4());
@@ -118,7 +118,7 @@ function Drone({ entity }: { entity: any }) {
     pos.set(entity.x, entity.y, entity.z);
     
     const players = useGameStore.getState().players;
-    let closestPlayer = null;
+    let closestPlayer: any = null;
     let minDist = Infinity;
     for (const id in players) {
       const p = players[id];
@@ -220,7 +220,7 @@ function Mech({ entity }: { entity: any }) {
     pos.set(entity.x, entity.y, entity.z);
     
     const players = useGameStore.getState().players;
-    let closestPlayer = null;
+    let closestPlayer: any = null;
     let minDist = Infinity;
     for (const id in players) {
       const p = players[id];

@@ -60,7 +60,7 @@ async function startServer() {
     state: 'lobby' | 'playing';
     teams: Record<string, string>; // playerId -> teamId
     votesToStart: Set<string>;
-    activeEvent: { type: 'tornado' | 'fog' | 'lava' | 'meteorite', endTime: number, targets?: {x: number, z: number}[] } | null;
+    activeEvent: { type: 'tornado' | 'lava' | 'meteorite', endTime: number, targets?: {x: number, z: number}[] } | null;
     eventsEnabled: boolean;
   }
 
@@ -301,7 +301,7 @@ async function startServer() {
 
   // Special Events Loop
   setInterval(() => {
-    const events: ('tornado' | 'fog' | 'lava' | 'meteorite')[] = ['tornado', 'fog', 'lava', 'meteorite'];
+    const events: ('tornado' | 'lava' | 'meteorite')[] = ['tornado', 'lava', 'meteorite'];
     for (const [roomId, room] of Object.entries(rooms)) {
       if (room.state !== 'playing') continue;
       if (!room.eventsEnabled) continue;
@@ -367,7 +367,7 @@ async function startServer() {
       if (room.mode === 'pve') {
         const entityUpdates: any[] = [];
         for (const entity of Object.values(room.entities)) {
-          let closestPlayer = null;
+          let closestPlayer: any = null;
           let minD = Infinity;
           for (const p of Object.values(room.players)) {
             const d = Math.sqrt((p.x - entity.x)**2 + (p.y - entity.y)**2 + (p.z - entity.z)**2);
@@ -1076,7 +1076,7 @@ async function startServer() {
       const p = r.players[socket.id];
       if (!p || !p.isAdmin) return;
       
-      if (['tornado', 'fog', 'lava', 'meteorite'].includes(event)) {
+      if (['tornado', 'lava', 'meteorite'].includes(event)) {
         const targets = Object.values(r.players).map(p => ({ x: p.x, z: p.z }));
         r.activeEvent = { type: event as any, endTime: Date.now() + 30000, targets };
         io.to(rId).emit('specialEvent', { type: event, duration: 30000, startTime: Date.now(), targets });

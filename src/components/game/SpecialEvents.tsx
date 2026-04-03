@@ -71,27 +71,6 @@ function Tornado() {
   );
 }
 
-function Fog() {
-  const myId = useGameStore(state => state.myId);
-  const players = useGameStore(state => state.players);
-  const socket = useGameStore(state => state.socket);
-  const lastDamage = useRef(0);
-
-  useFrame(() => {
-    if (myId && players[myId] && players[myId].health > 0) {
-      const now = Date.now();
-      if (now - lastDamage.current > 2000) {
-        lastDamage.current = now;
-        socket?.emit('takeEnvironmentalDamage', 5); // Slow damage
-      }
-    }
-  });
-
-  return (
-    <fog attach="fog" args={['#888888', 10, 50]} />
-  );
-}
-
 function LavaSpots() {
   const seed = useGameStore(state => state.seed);
   const activeEvent = useGameStore(state => state.activeEvent);
@@ -214,7 +193,7 @@ function Meteorites() {
       });
     }
     
-    const nextMeteors = [];
+    const nextMeteors: any[] = [];
     for (let i = 0; i < meteors.current.length; i++) {
       const m = meteors.current[i];
       m.y -= m.speed * delta;
@@ -265,7 +244,6 @@ export function SpecialEvents() {
   return (
     <>
       {activeEvent.type === 'tornado' && <Tornado />}
-      {activeEvent.type === 'fog' && <Fog />}
       {activeEvent.type === 'lava' && <LavaSpots />}
       {activeEvent.type === 'meteorite' && <Meteorites />}
     </>

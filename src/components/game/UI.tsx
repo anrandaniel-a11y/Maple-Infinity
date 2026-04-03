@@ -25,6 +25,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const victory = useGameStore((state) => state.victory);
   const activeEvent = useGameStore((state) => state.activeEvent);
   const eventsEnabled = useGameStore((state) => state.eventsEnabled);
+  const enableLighting = useGameStore((state) => state.enableLighting);
   const [adminOpen, setAdminOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -32,15 +33,6 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
   const [adminTpOpen, setAdminTpOpen] = useState(false);
   const [adminBanOpen, setAdminBanOpen] = useState(false);
   const [adminEventsOpen, setAdminEventsOpen] = useState(false);
-  const [eventWarning, setEventWarning] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (activeEvent) {
-      setEventWarning(`WARNING: ${activeEvent.type.toUpperCase()} INCOMING!`);
-      const timer = setTimeout(() => setEventWarning(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeEvent]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -109,28 +101,17 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
         </div>
       )}
 
-      {/* Event Warning Overlay */}
-      {eventWarning && (
-        <div className="absolute inset-0 flex items-center justify-center bg-red-900/30 backdrop-blur-sm z-40 pointer-events-none animate-pulse">
-          <div className="text-center">
-            <h1 className="text-6xl font-black text-red-500 uppercase tracking-[0.2em] mb-4 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]">
-              {eventWarning}
-            </h1>
-          </div>
-        </div>
-      )}
-
       {/* Death Screen / Eliminated Overlay */}
       {me.health <= 0 && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-auto animate-in fade-in duration-500">
           <div className="text-center flex flex-col items-center gap-6">
             <h1 className="text-7xl font-black text-red-500 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(255,0,0,0.5)]">
-              {gameMode === 'team' && me.lives <= 0 ? 'ELIMINATED' : 'YOU DIED'}
+              {gameMode === 'team' && (me.lives ?? 0) <= 0 ? 'ELIMINATED' : 'YOU DIED'}
             </h1>
             <p className="text-2xl text-white font-mono uppercase tracking-widest opacity-80">
-              {gameMode === 'team' && me.lives <= 0 ? 'Spectating' : 'Waiting for respawn...'}
+              {gameMode === 'team' && (me.lives ?? 0) <= 0 ? 'Spectating' : 'Waiting for respawn...'}
             </p>
-            {!(gameMode === 'team' && me.lives <= 0) && (
+            {!(gameMode === 'team' && (me.lives ?? 0) <= 0) && (
               <button 
                 className="bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-8 rounded-xl text-xl uppercase tracking-widest transition-colors border-2 border-red-400 shadow-[0_0_20px_rgba(255,0,0,0.5)]"
                 onClick={() => {
@@ -435,7 +416,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
               <label className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-widest cursor-pointer">
                 <input 
                   type="checkbox" 
-                  checked={useGameStore(state => state.enableLighting)}
+                  checked={enableLighting}
                   onChange={(e) => useGameStore.getState().setEnableLighting(e.target.checked)}
                   className="accent-cyan-400"
                 />
@@ -577,7 +558,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                 </button>
                 {adminEventsOpen && (
                   <div className="flex flex-wrap gap-2">
-                    {['tornado', 'fog', 'lava', 'meteorite'].map(e => (
+                    {['tornado', 'lava', 'meteorite'].map(e => (
                       <button
                         key={e}
                         className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"

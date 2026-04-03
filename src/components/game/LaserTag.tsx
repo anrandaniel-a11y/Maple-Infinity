@@ -239,7 +239,6 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
           </>
         )}
         <color attach="background" args={['#050505']} />
-        <fog attach="fog" args={['#050505', renderDistance * 0.2, renderDistance]} />
 
         {enableLighting && (
           <>
