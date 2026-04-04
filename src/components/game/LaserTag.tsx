@@ -10,7 +10,7 @@ import { UI } from './UI';
 import { Entities } from './Entities';
 import { SpecialEvents } from './SpecialEvents';
 
-import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows } from '@react-three/drei';
+import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows, Text } from '@react-three/drei';
 
 import { TeamLobby } from './TeamLobby';
 
@@ -168,6 +168,46 @@ function Shockwaves() {
   );
 }
 
+function DamageNumber({ dn }: { dn: any }) {
+  const ref = useRef<any>(null);
+  const [yOffset, setYOffset] = useState(0);
+  const [opacity, setOpacity] = useState(1);
+
+  useFrame((state, delta) => {
+    setYOffset(y => y + delta * 2);
+    setOpacity(o => Math.max(0, o - delta));
+    if (ref.current) {
+      ref.current.quaternion.copy(state.camera.quaternion);
+    }
+  });
+
+  return (
+    <Text
+      ref={ref}
+      position={[dn.x, dn.y + yOffset, dn.z]}
+      fontSize={dn.isCritical ? 0.8 : 0.5}
+      color={dn.isCritical ? '#ff0000' : '#ffffff'}
+      outlineWidth={0.05}
+      outlineColor="#000000"
+      fillOpacity={opacity}
+      outlineOpacity={opacity}
+    >
+      {dn.amount}
+    </Text>
+  );
+}
+
+function DamageNumbers() {
+  const damageNumbers = useGameStore((state) => state.damageNumbers);
+  return (
+    <>
+      {damageNumbers.map((dn) => (
+        <DamageNumber key={dn.id} dn={dn} />
+      ))}
+    </>
+  );
+}
+
 function RemotePlayers() {
   const players = useGameStore((state) => state.players);
   const myId = useGameStore((state) => state.myId);
@@ -194,6 +234,9 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const gameState = useGameStore((state) => state.gameState);
   const banned = useGameStore((state) => state.banned);
   const [dpr, setDpr] = useState(1);
+
+  const shadowQuality = useGameStore((state) => state.shadowQuality);
+  const shadowMapSize = shadowQuality === 'low' ? 512 : shadowQuality === 'medium' ? 1024 : 2048;
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -247,8 +290,8 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
               position={[100, 200, 100]} 
               intensity={1} 
               castShadow 
-              shadow-mapSize-width={2048}
-              shadow-mapSize-height={2048}
+              shadow-mapSize-width={shadowMapSize}
+              shadow-mapSize-height={shadowMapSize}
               shadow-camera-left={-200}
               shadow-camera-right={200}
               shadow-camera-top={200}
@@ -270,6 +313,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
         {/* Lasers */}
         <Lasers />
         <Shockwaves />
+        <DamageNumbers />
       </Canvas>
 
       <UI isMobile={isMobile} isAdmin={isAdmin} />

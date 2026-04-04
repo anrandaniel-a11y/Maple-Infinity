@@ -35,15 +35,10 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     sensitivityRef.current = sensitivity;
   }, [sensitivity]);
 
-  // We use primitive to add the camera to the scene graph so portals attached to it are rendered
-  // This avoids manual scene.add(camera) which can cause circular dependency errors in R3F
-  
   useEffect(() => {
-    // Cleanup any manual additions just in case
+    scene.add(camera);
     return () => {
-      if (camera.parent === scene) {
-        scene.remove(camera);
-      }
+      scene.remove(camera);
     };
   }, [camera, scene]);
 
@@ -187,7 +182,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
       // Recoil
       camera.rotation.x += 0.05;
-      window.dispatchEvent(new CustomEvent('playerShoot'));
+      window.dispatchEvent(new CustomEvent('playerShoot', { detail: { cooldown: cooldowns[weapon] || 200 } }));
     };
 
     const handleMobileDash = () => {
@@ -502,7 +497,6 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
   return (
     <>
-      <primitive object={camera} />
       {!isMobile && <PointerLockControls pointerSpeed={sensitivity} />}
       
       {/* Attach Gun to Camera */}

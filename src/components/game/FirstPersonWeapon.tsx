@@ -28,22 +28,23 @@ export function FirstPersonWeapon({ weapon, color }: { weapon: string, color: st
     return () => window.removeEventListener('playerShoot', handleShoot);
   }, []);
 
+  const enableLighting = useGameStore((state) => state.enableLighting);
+
   useEffect(() => {
     if (groupRef.current) {
       groupRef.current.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           // Clone material so we don't break other weapons
           child.material = child.material.clone();
-          // Keep depthTest true so it sorts with itself and blocks the wireframe.
-          // Because we scale the weapon down and move it very close to the camera,
-          // it will never clip into walls!
-          child.material.depthTest = true; 
-          child.material.depthWrite = true;
+          // Render weapon on top of everything
+          child.material.transparent = true;
+          child.material.depthTest = false; 
+          child.material.depthWrite = false;
           child.renderOrder = 999;
         }
       });
     }
-  }, [weapon, color]);
+  }, [weapon, color, enableLighting]);
 
   // Initialize previous position and rotation
   useEffect(() => {
@@ -99,6 +100,7 @@ export function FirstPersonWeapon({ weapon, color }: { weapon: string, color: st
 
     // --- DRAG (Position Lag) ---
     const pos = state.camera.position;
+
     const rawVelocity = new THREE.Vector3().subVectors(pos, previousPosition.current).divideScalar(safeDelta);
     previousPosition.current.copy(pos);
 
@@ -129,17 +131,17 @@ export function FirstPersonWeapon({ weapon, color }: { weapon: string, color: st
     const scaleFactor = 0.2;
     groupRef.current.scale.setScalar(scaleFactor);
     
-    groupRef.current.position.set(
-      (0.3 + idleBobX + swayRef.current.x * 0.2 + dragRef.current.x) * scaleFactor, 
-      (-0.3 + idleBobY - swayRef.current.y * 0.2 + dragRef.current.y) * scaleFactor, 
-      (-0.5 + recoilZ + dragRef.current.z) * scaleFactor
-    );
+    const targetPosX = (0.3 + idleBobX + swayRef.current.x * 0.2 + dragRef.current.x) * scaleFactor;
+    const targetPosY = (-0.3 + idleBobY - swayRef.current.y * 0.2 + dragRef.current.y) * scaleFactor;
+    const targetPosZ = (-0.5 + recoilZ + dragRef.current.z) * scaleFactor;
     
-    groupRef.current.rotation.set(
-      recoilRotX - swayRef.current.y, 
-      -swayRef.current.x, 
-      swayRef.current.x * 0.5 // slight tilt when turning
-    );
+    groupRef.current.position.set(targetPosX, targetPosY, targetPosZ);
+    
+    const targetRotX = recoilRotX - swayRef.current.y;
+    const targetRotY = -swayRef.current.x;
+    const targetRotZ = swayRef.current.x * 0.5;
+
+    groupRef.current.rotation.set(targetRotX, targetRotY, targetRotZ);
   });
 
   return createPortal(

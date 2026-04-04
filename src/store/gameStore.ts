@@ -51,12 +51,23 @@ interface SpecialEvent {
   targets?: { x: number, z: number }[];
 }
 
+interface DamageNumber {
+  id: string;
+  amount: number;
+  isCritical: boolean;
+  x: number;
+  y: number;
+  z: number;
+  createdAt: number;
+}
+
 interface GameStore {
   socket: Socket | null;
   players: Record<string, PlayerState>;
   entities: Record<string, EntityState>;
   lasers: LaserState[];
   shockwaves: ShockwaveState[];
+  damageNumbers: DamageNumber[];
   weapons: Record<string, any>;
   medkits: Record<string, any>;
   explosions: any[];
@@ -67,6 +78,7 @@ interface GameStore {
   showFps: boolean;
   fpsLimit: number;
   enableLighting: boolean;
+  shadowQuality: 'low' | 'medium' | 'high';
   mapIndex: number;
   seed: number;
   gameMode: 'pvp' | 'pve' | 'team' | 'speed';
@@ -91,6 +103,7 @@ interface GameStore {
   setShowFps: (val: boolean) => void;
   setFpsLimit: (val: number) => void;
   setEnableLighting: (val: boolean) => void;
+  setShadowQuality: (val: 'low' | 'medium' | 'high') => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
   banned: boolean;
@@ -115,6 +128,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   entities: {},
   lasers: [],
   shockwaves: [],
+  damageNumbers: [],
   weapons: {},
   medkits: {},
   explosions: [],
@@ -125,6 +139,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   showFps: false,
   fpsLimit: 0,
   enableLighting: false,
+  shadowQuality: 'medium',
   mapIndex: 0,
   seed: 0,
   gameMode: 'pvp',
@@ -150,6 +165,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setShowFps: (val) => set({ showFps: val }),
   setFpsLimit: (val) => set({ fpsLimit: val }),
   setEnableLighting: (val) => set({ enableLighting: val }),
+  setShadowQuality: (val) => set({ shadowQuality: val }),
 
   boss: null,
   setBoss: (boss) => set({ boss }),
@@ -399,6 +415,34 @@ export const useGameStore = create<GameStore>((set, get) => ({
         return {
           players: { ...state.players, [id]: { ...state.players[id], health, bleedingTicks } }
         };
+      });
+    });
+
+    socket.on('damageNumber', ({ id, amount, isCritical, type }) => {
+      set((state) => {
+        let target;
+        if (type === 'player') {
+          target = state.players[id];
+        } else {
+          target = state.entities[id];
+        }
+        if (!target) return state;
+
+        const newDamageNumber = {
+          id: Math.random().toString(36).substring(7),
+          amount,
+          isCritical,
+          x: target.x + (Math.random() - 0.5) * 2,
+          y: target.y + (type === 'entity' && (target as any).type === 'BOSS' ? 8 : 2) + Math.random(),
+          z: target.z + (Math.random() - 0.5) * 2,
+          createdAt: Date.now()
+        };
+
+        setTimeout(() => {
+          set((s) => ({ damageNumbers: s.damageNumbers.filter(dn => dn.id !== newDamageNumber.id) }));
+        }, 1000);
+
+        return { damageNumbers: [...state.damageNumbers, newDamageNumber] };
       });
     });
 

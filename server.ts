@@ -572,8 +572,14 @@ async function startServer() {
       return;
     }
     
-    target.health -= amount;
+    const isCritical = Math.random() < 0.3;
+    const finalDamage = isCritical ? Math.floor(amount * 1.5) : amount;
+    
+    target.health -= finalDamage;
     target.lastAttacker = shooterId;
+    
+    io.to(roomId).emit('damageNumber', { id: targetId, amount: finalDamage, isCritical, type: 'player' });
+    
     if (target.health <= 0) {
       if (room.mode === 'team') {
         target.lives -= 1;
@@ -644,7 +650,13 @@ async function startServer() {
       return;
     }
 
-    entity.health -= amount;
+    const isCritical = Math.random() < 0.3;
+    const finalDamage = isCritical ? Math.floor(amount * 1.5) : amount;
+
+    entity.health -= finalDamage;
+    
+    io.to(roomId).emit('damageNumber', { id: entityId, amount: finalDamage, isCritical, type: 'entity' });
+    
     if (entity.health <= 0) {
       if (entity.type === 'BOSS') {
         room.bossActive = false;
