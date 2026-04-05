@@ -222,7 +222,7 @@ function RemotePlayers() {
   );
 }
 
-export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare' }) {
+export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare', onExit?: () => void }) {
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const myId = useGameStore((state) => state.myId);
@@ -236,7 +236,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
   const [dpr, setDpr] = useState(1);
 
   const shadowQuality = useGameStore((state) => state.shadowQuality);
-  const shadowMapSize = shadowQuality === 'low' ? 512 : shadowQuality === 'medium' ? 1024 : 2048;
+  const shadowMapSize = shadowQuality === 'low' ? 512 : shadowQuality === 'medium' ? 1024 : shadowQuality === 'high' ? 2048 : 4096;
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -251,6 +251,14 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
       <div className="min-h-screen flex flex-col items-center justify-center bg-black text-red-500 font-mono text-xl">
         <h1 className="text-4xl font-bold mb-4">YOU HAVE BEEN BANNED</h1>
         <p>You were removed from the server by an administrator.</p>
+        {onExit && (
+          <button 
+            onClick={onExit}
+            className="mt-8 px-6 py-3 bg-red-900/50 hover:bg-red-800/50 border border-red-500/50 rounded-xl text-red-100 transition-colors"
+          >
+            Return to Menu
+          </button>
+        )}
       </div>
     );
   }
@@ -282,13 +290,21 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
           </>
         )}
         <color attach="background" args={['#050505']} />
+        
+        {enableLighting && shadowQuality === 'ultra' && (
+          <fogExp2 attach="fog" args={['#050505', 0.006]} />
+        )}
+        {enableLighting && shadowQuality !== 'ultra' && (
+          <fog attach="fog" args={['#050505', 20, renderDistance]} />
+        )}
 
         {enableLighting && (
           <>
-            <ambientLight intensity={0.5} />
+            <ambientLight intensity={0.4} color="#404060" />
             <directionalLight 
               position={[100, 200, 100]} 
-              intensity={1} 
+              intensity={1.2} 
+              color="#ffffff"
               castShadow 
               shadow-mapSize-width={shadowMapSize}
               shadow-mapSize-height={shadowMapSize}
@@ -298,6 +314,18 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
               shadow-camera-bottom={-200}
               shadow-camera-near={0.5}
               shadow-camera-far={500}
+              shadow-bias={-0.0005}
+            />
+            <pointLight 
+              position={[0, 40, 0]} 
+              intensity={2} 
+              color="#00ffff" 
+              distance={200} 
+              decay={2} 
+              castShadow={shadowQuality === 'ultra' || shadowQuality === 'high'}
+              shadow-mapSize-width={shadowMapSize / 2}
+              shadow-mapSize-height={shadowMapSize / 2}
+              shadow-bias={-0.001}
             />
           </>
         )}
@@ -316,7 +344,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty }: { nickname
         <DamageNumbers />
       </Canvas>
 
-      <UI isMobile={isMobile} isAdmin={isAdmin} />
+      <UI isMobile={isMobile} isAdmin={isAdmin} onExit={onExit} />
     </div>
   );
 }

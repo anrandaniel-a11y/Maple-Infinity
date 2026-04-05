@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { motion } from 'motion/react';
 import { Users, CheckCircle2, Circle } from 'lucide-react';
+import { playSound } from '../../utils/audio';
 
 const TEAMS = [
   { id: 'red', name: 'Red Team', color: 'bg-red-500/20 text-red-400 border-red-500/50' },
@@ -50,7 +51,13 @@ export function TeamLobby() {
               <div 
                 key={team.id}
                 className={`border rounded-xl p-4 flex flex-col ${team.color} ${isMyTeam ? 'ring-2 ring-white' : ''} ${!isFull && !isMyTeam ? 'cursor-pointer hover:bg-white/5' : ''}`}
-                onClick={() => !isFull && !isMyTeam && joinTeam(team.id)}
+                onClick={() => {
+                  if (!isFull && !isMyTeam) {
+                    playSound('click');
+                    joinTeam(team.id);
+                  }
+                }}
+                onMouseEnter={() => !isFull && !isMyTeam && playSound('hover')}
               >
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold uppercase tracking-wider">{team.name}</h3>
@@ -82,7 +89,13 @@ export function TeamLobby() {
 
         <div className="flex flex-col items-center gap-4 border-t border-white/10 pt-8">
           <button
-            onClick={() => !hasVoted && myTeam && voteStart()}
+            onClick={() => {
+              if (!hasVoted && myTeam) {
+                playSound('click');
+                voteStart();
+              }
+            }}
+            onMouseEnter={() => !hasVoted && myTeam && playSound('hover')}
             disabled={hasVoted || !myTeam}
             className={`px-8 py-4 rounded-xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all ${
               hasVoted 

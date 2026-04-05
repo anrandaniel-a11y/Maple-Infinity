@@ -22,7 +22,7 @@ export default function App() {
   const [difficulty, setDifficulty] = useState<'easy' | 'normal' | 'hard' | 'nightmare'>('normal');
 
   if (isAuthenticated && gameMode) {
-    return <LaserTag nickname={nickname} isAdmin={isAdmin} gameMode={gameMode} difficulty={difficulty} />;
+    return <LaserTag nickname={nickname} isAdmin={isAdmin} gameMode={gameMode} difficulty={difficulty} onExit={() => setGameMode(null)} />;
   }
 
   if (isAuthenticated && !gameMode) {

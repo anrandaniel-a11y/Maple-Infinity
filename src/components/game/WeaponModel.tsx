@@ -61,12 +61,19 @@ const defaultWeaponMaterialsStd: Record<string, THREE.MeshStandardMaterial> = {}
 function getDefaultWeaponMaterial(color: string, enableLighting: boolean) {
   if (enableLighting) {
     if (!defaultWeaponMaterialsStd[color]) {
-      defaultWeaponMaterialsStd[color] = new THREE.MeshStandardMaterial({ color, metalness: 0.5, roughness: 0.5 });
+      defaultWeaponMaterialsStd[color] = new THREE.MeshStandardMaterial({ 
+        color, 
+        metalness: 0.5, 
+        roughness: 0.5,
+        emissive: color,
+        emissiveIntensity: 1.5
+      });
     }
     return defaultWeaponMaterialsStd[color];
   } else {
     if (!defaultWeaponMaterialsBasic[color]) {
-      defaultWeaponMaterialsBasic[color] = new THREE.MeshBasicMaterial({ color });
+      const glowColor = new THREE.Color(color).multiplyScalar(1.5);
+      defaultWeaponMaterialsBasic[color] = new THREE.MeshBasicMaterial({ color: glowColor });
     }
     return defaultWeaponMaterialsBasic[color];
   }

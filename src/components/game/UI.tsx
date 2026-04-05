@@ -1,9 +1,10 @@
 import { useGameStore } from '../../store/gameStore';
 import { Joystick } from 'react-joystick-component';
-import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar } from 'lucide-react';
+import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { playSound } from '../../utils/audio';
 
-export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean }) {
+export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: boolean, onExit?: () => void }) {
   const myId = useGameStore((state) => state.myId);
   const me = useGameStore((state) => state.players[myId || '']);
   const players = useGameStore((state) => state.players);
@@ -218,11 +219,23 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
           </div>
         )}
         
-        {/* Settings, Fullscreen & Admin Panel Buttons */}
+        {/* Settings, Fullscreen, Admin Panel & Leave Buttons */}
         <div className="pointer-events-auto flex gap-2">
+          {onExit && (
+            <button 
+              className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+              onClick={() => { playSound('click'); onExit(); }}
+              onMouseEnter={() => playSound('hover')}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Leave Game"
+            >
+              <LogOut size={20} />
+            </button>
+          )}
           <button 
             className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => { playSound('click'); setSettingsOpen(true); }}
+            onMouseEnter={() => playSound('hover')}
             onPointerDown={(e) => e.stopPropagation()}
             title="Settings"
           >
@@ -231,6 +244,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
           <button 
             className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
             onClick={() => {
+              playSound('click');
               if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
                   console.error(`Error attempting to enable fullscreen: ${err.message}`);
@@ -239,6 +253,7 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                 document.exitFullscreen();
               }
             }}
+            onMouseEnter={() => playSound('hover')}
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             onPointerDown={(e) => e.stopPropagation()}
           >
@@ -247,7 +262,8 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
           {isAdmin && (
             <button 
               className="bg-red-900/50 backdrop-blur-md border border-red-500/50 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors p-4"
-              onClick={() => setAdminOpen(true)}
+              onClick={() => { playSound('click'); setAdminOpen(true); }}
+              onMouseEnter={() => playSound('hover')}
               onPointerDown={(e) => e.stopPropagation()}
               title="Admin Panel"
             >
@@ -515,11 +531,11 @@ export function UI({ isMobile, isAdmin }: { isMobile: boolean, isAdmin: boolean 
                     <div className="bg-black/30 p-3 rounded-lg border border-white/5 mt-2">
                       <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">Shadow Quality</label>
                       <div className="flex gap-2">
-                        {['low', 'medium', 'high'].map(q => (
+                        {['low', 'medium', 'high', 'ultra'].map(q => (
                           <button
                             key={q}
                             className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${shadowQuality === q ? 'bg-cyan-500 text-black' : 'bg-black/50 text-gray-400 hover:text-white border border-white/10'}`}
-                            onClick={() => setShadowQuality(q as 'low' | 'medium' | 'high')}
+                            onClick={() => setShadowQuality(q as 'low' | 'medium' | 'high' | 'ultra')}
                           >
                             {q}
                           </button>

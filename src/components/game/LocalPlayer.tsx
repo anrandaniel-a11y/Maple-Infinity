@@ -6,6 +6,7 @@ import { PointerLockControls } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
 import { FirstPersonWeapon } from './FirstPersonWeapon';
+import { playSound } from '../../utils/audio';
 
 const BASE_SPEED = 12;
 const JUMP_FORCE = 8; // Increased to match new gravity scale (2.5)
@@ -50,6 +51,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   const lastGroundedTime = useRef(0);
   const mobileDashRef = useRef(false);
   const dashVelocity = useRef(new Vector3());
+  const lastFootstepTime = useRef(0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -183,6 +185,12 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       // Recoil
       camera.rotation.x += 0.05;
       window.dispatchEvent(new CustomEvent('playerShoot', { detail: { cooldown: cooldowns[weapon] || 200 } }));
+      
+      if (weapon === 'SHOTGUN') playSound('shoot_shotgun');
+      else if (weapon === 'RPG') playSound('shoot_rpg');
+      else if (weapon === 'REVOLVER') playSound('shoot_revolver');
+      else if (weapon === 'KNIFE') playSound('knife_swing');
+      else playSound('shoot_laser');
     };
 
     const handleMobileDash = () => {
@@ -386,6 +394,15 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         lastGroundedTime.current = 0; // Prevent double jumping
         keysRef.current.space = false; // Require releasing and pressing space again to jump
         window.dispatchEvent(new CustomEvent('playerJump'));
+        playSound('jump');
+      }
+
+      // Footsteps
+      if (isGrounded && direction.lengthSq() > 0.1) {
+        if (now - lastFootstepTime.current > 300) {
+          playSound('footstep');
+          lastFootstepTime.current = now;
+        }
       }
 
       // Dash

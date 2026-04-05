@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider, InstancedRigidBodies } from '@react-three/rapier';
+import { MeshReflectorMaterial } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
 import { generateVolume, getTerrainHeight, VOXEL_SIZE, GRID_W, GRID_H, GRID_D } from '../../utils/mapGen';
@@ -165,7 +166,7 @@ function Explosion({ position, radius }: { position: [number, number, number], r
   });
 
   return (
-    <mesh ref={meshRef} position={position} geometry={explosionGeo} frustumCulled={false}>
+    <mesh ref={meshRef} position={position} geometry={explosionGeo} frustumCulled={true}>
       <meshBasicMaterial ref={materialRef} color="#ff4400" transparent blending={THREE.AdditiveBlending} depthWrite={false} depthTest={false} side={THREE.DoubleSide} />
     </mesh>
   );
@@ -211,17 +212,35 @@ const GLOBAL_TERRAIN_GEOMETRY = generateTerrainGeometry();
 function Terrain() {
   const geometry = GLOBAL_TERRAIN_GEOMETRY;
   const enableLighting = useGameStore((state) => state.enableLighting);
+  const shadowQuality = useGameStore((state) => state.shadowQuality);
 
   return (
-    <RigidBody type="fixed" colliders="trimesh" friction={0.8}>
-      <mesh receiveShadow={enableLighting} geometry={geometry}>
-        {enableLighting ? <meshStandardMaterial vertexColors roughness={0.8} metalness={0.2} /> : <meshBasicMaterial vertexColors />}
-      </mesh>
-      {/* Neon wireframe overlay for the terrain */}
-      <mesh geometry={geometry} position={[0, 0.1, 0]}>
-        <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.6} />
-      </mesh>
-    </RigidBody>
+    <group>
+      <RigidBody type="fixed" colliders="trimesh" friction={0.8}>
+        <mesh receiveShadow={enableLighting} geometry={geometry}>
+          {enableLighting ? <meshStandardMaterial vertexColors roughness={0.8} metalness={0.2} /> : <meshBasicMaterial vertexColors />}
+        </mesh>
+        {/* Neon wireframe overlay for the terrain */}
+        <mesh geometry={geometry} position={[0, 0.1, 0]}>
+          <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.6} />
+        </mesh>
+      </RigidBody>
+      
+      {/* Reflective water/glass plane for ultra settings */}
+      {enableLighting && shadowQuality === 'ultra' && (
+        <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[2000, 2000]} />
+          <MeshReflectorMaterial
+            resolution={1024}
+            mixStrength={10}
+            roughness={0.1}
+            color="#152535"
+            metalness={0.8}
+            mirror={1}
+          />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -385,10 +404,21 @@ function ObstacleChunk({ data }: { data: any }) {
     return new THREE.Box3(min, max);
   }, [center]);
 
+  const frustum = useMemo(() => new THREE.Frustum(), []);
+  const projScreenMatrix = useMemo(() => new THREE.Matrix4(), []);
+
   useFrame(({ camera }) => {
     if (groupRef.current) {
       const dist = box.distanceToPoint(camera.position);
-      groupRef.current.visible = dist < renderDistance;
+      if (dist >= renderDistance) {
+        groupRef.current.visible = false;
+        return;
+      }
+      
+      projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreenMatrix);
+      
+      groupRef.current.visible = frustum.intersectsBox(box);
     }
   });
 
@@ -414,7 +444,7 @@ function ObstacleChunk({ data }: { data: any }) {
           />
         ))}
       </RigidBody>
-      <instancedMesh castShadow={enableLighting} receiveShadow={enableLighting} ref={meshRef} args={[undefined, undefined, data.positions.length]} frustumCulled={false}>
+      <instancedMesh castShadow={enableLighting} receiveShadow={enableLighting} ref={meshRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[matrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />

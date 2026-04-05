@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGameStore } from '../../store/gameStore';
 import * as THREE from 'three';
@@ -17,18 +17,18 @@ const mechMaterialStd = new THREE.MeshStandardMaterial({ color: '#2a2a2a', rough
 const mechAccentMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 });
 
 // Reusable frustum culling hook
-function useFrustumCulling(ref: React.RefObject<THREE.Object3D | null>, radius: number = 5) {
+export function useFrustumCulling(ref: React.RefObject<THREE.Object3D | null>, radius: number = 5) {
   const { camera } = useThree();
-  const frustum = useRef(new THREE.Frustum());
-  const projScreenMatrix = useRef(new THREE.Matrix4());
-  const sphere = useRef(new THREE.Sphere(new THREE.Vector3(), radius));
+  const frustum = useMemo(() => new THREE.Frustum(), []);
+  const projScreenMatrix = useMemo(() => new THREE.Matrix4(), []);
+  const sphere = useMemo(() => new THREE.Sphere(new THREE.Vector3(), radius), [radius]);
 
   useFrame(() => {
     if (!ref.current) return;
-    projScreenMatrix.current.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    frustum.current.setFromProjectionMatrix(projScreenMatrix.current);
-    sphere.current.center.copy(ref.current.position);
-    ref.current.visible = frustum.current.intersectsSphere(sphere.current);
+    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    frustum.setFromProjectionMatrix(projScreenMatrix);
+    sphere.center.copy(ref.current.position);
+    ref.current.visible = frustum.intersectsSphere(sphere);
   });
 }
 

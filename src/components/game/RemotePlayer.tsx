@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { PlayerModel } from './PlayerModel';
 import { WeaponModel } from './WeaponModel';
 import { useGameStore } from '../../store/gameStore';
+import { useFrustumCulling } from './Entities';
 
 // Shared Geometries & Materials
 const healthBgGeo = new THREE.PlaneGeometry(1, 0.1);
@@ -39,9 +40,11 @@ const targetEuler = new THREE.Euler();
 
 export const RemotePlayer = memo(function RemotePlayer({ player }: RemotePlayerProps) {
   const groupRef = useRef<Group>(null);
+  
+  useFrustumCulling(groupRef, 3);
 
   useFrame((state, delta) => {
-    if (!groupRef.current) return;
+    if (!groupRef.current || !groupRef.current.visible) return;
 
     // Interpolate position
     targetPos.set(player.x, player.y, player.z);

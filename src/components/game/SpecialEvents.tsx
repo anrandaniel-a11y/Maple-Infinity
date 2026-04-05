@@ -2,9 +2,11 @@ import { useEffect, useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '../../store/gameStore';
+import { useFrustumCulling } from './Entities';
 
 function Tornado() {
   const ref = useRef<THREE.Group>(null);
+  useFrustumCulling(ref, 20);
   const myId = useGameStore(state => state.myId);
   const players = useGameStore(state => state.players);
   const socket = useGameStore(state => state.socket);

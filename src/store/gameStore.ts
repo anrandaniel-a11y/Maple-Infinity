@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
+import { playSound } from '../utils/audio';
 
 interface PlayerState {
   id: string;
@@ -78,7 +79,7 @@ interface GameStore {
   showFps: boolean;
   fpsLimit: number;
   enableLighting: boolean;
-  shadowQuality: 'low' | 'medium' | 'high';
+  shadowQuality: 'low' | 'medium' | 'high' | 'ultra';
   mapIndex: number;
   seed: number;
   gameMode: 'pvp' | 'pve' | 'team' | 'speed';
@@ -103,7 +104,7 @@ interface GameStore {
   setShowFps: (val: boolean) => void;
   setFpsLimit: (val: number) => void;
   setEnableLighting: (val: boolean) => void;
-  setShadowQuality: (val: 'low' | 'medium' | 'high') => void;
+  setShadowQuality: (val: 'low' | 'medium' | 'high' | 'ultra') => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
   banned: boolean;
@@ -156,7 +157,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     infiniteHealth: false,
     flying: false,
     noclip: false,
-    speed: 12,
+    speed: 0,
   },
 
   setSensitivity: (val) => set({ sensitivity: val }),
@@ -352,6 +353,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socket.on('explosion', (exp) => {
       const id = Math.random().toString(36).substring(7);
       get().addExplosion({ ...exp, id });
+      playSound('explosion');
       setTimeout(() => {
         get().removeExplosion(id);
       }, 500); // Explosion lasts 500ms
@@ -410,6 +412,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
 
     socket.on('playerHit', ({ id, health, bleedingTicks }) => {
+      if (id === get().myId) {
+        playSound('hit');
+      }
       set((state) => {
         if (!state.players[id]) return state;
         return {
