@@ -1,15 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Crosshair, ShieldAlert, Users, Zap, Play, ChevronLeft, Skull, Shield, ShieldHalf, Flame } from 'lucide-react';
+import { Crosshair, ShieldAlert, Users, Zap, Play, ChevronLeft, Skull, Shield, ShieldHalf, Flame, Settings } from 'lucide-react';
 import { DynamicBackground } from './DynamicBackground';
 
 interface GameSelectorProps {
-  onSelectMode: (mode: 'pvp' | 'pve' | 'team' | 'speed', difficulty?: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
+  onSelectMode: (mode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty?: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
   nickname: string;
+  isAdmin: boolean;
 }
 
-export function GameSelector({ onSelectMode, nickname }: GameSelectorProps) {
+export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorProps) {
   const [showDifficulty, setShowDifficulty] = useState(false);
+  const [showCustomConfig, setShowCustomConfig] = useState(false);
+  const [customActive, setCustomActive] = useState(false);
+  
+  const [customConfig, setCustomConfig] = useState({
+    teams: false,
+    teamSize: 2,
+    enemyBots: 0,
+    health: 500,
+    speed: 12,
+    spawnWeapon: 'DEFAULT'
+  });
+
+  useEffect(() => {
+    fetch('/api/custom-game')
+      .then(res => res.json())
+      .then(data => {
+        if (data.active) {
+          setCustomActive(true);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleHostCustom = async () => {
+    try {
+      await fetch('/api/custom-game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAdmin, config: customConfig })
+      });
+      onSelectMode('custom');
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <div className="min-h-screen text-white font-sans selection:bg-cyan-500/30 relative overflow-hidden flex flex-col items-center justify-center px-4 py-20">
@@ -303,6 +339,169 @@ export function GameSelector({ onSelectMode, nickname }: GameSelectorProps) {
             </button>
           </div>
         </motion.div>
+
+        {/* Custom Mode Card */}
+        {(customActive || isAdmin) && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0 }}
+            className="group relative rounded-3xl overflow-hidden bg-black/50 border border-emerald-500/30 backdrop-blur-md hover:border-emerald-400 transition-all duration-500 md:col-span-2 xl:col-span-4"
+          >
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
+            <img 
+              src="https://images.unsplash.com/photo-1555680202-c86f0e12f086?auto=format&fit=crop&q=80&w=1000" 
+              alt="Custom Mode" 
+              className="absolute inset-0 w-full h-full object-cover opacity-50 group-hover:opacity-70 group-hover:scale-105 transition-all duration-700"
+              referrerPolicy="no-referrer"
+            />
+            
+            <div className="relative z-20 p-8 h-full flex flex-col">
+              <AnimatePresence mode="wait">
+                {!showCustomConfig ? (
+                  <motion.div 
+                    key="custom-info"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="flex flex-col h-full"
+                  >
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/50">
+                        <Settings className="w-8 h-8 text-emerald-400" />
+                      </div>
+                      <h2 className="text-3xl font-bold text-emerald-400 tracking-wider uppercase">Custom Game</h2>
+                    </div>
+                    
+                    <p className="text-gray-300 mb-6 flex-grow leading-relaxed">
+                      {customActive ? 'An admin has hosted a custom game! Join now to experience unique rules.' : 'Configure a custom game mode with unique rules, teams, bots, and more.'}
+                    </p>
+                    
+                    <div className="flex gap-4 mb-8">
+                      <div className="flex items-center gap-2 text-sm text-emerald-200 bg-emerald-900/40 px-3 py-1.5 rounded-full border border-emerald-500/20">
+                        <Settings className="w-4 h-4" /> Custom Rules
+                      </div>
+                    </div>
+                    
+                    {customActive ? (
+                      <button
+                        onClick={() => onSelectMode('custom')}
+                        className="w-full py-4 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-100 hover:text-white border border-emerald-500/50 hover:border-emerald-400 font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                      >
+                        <Play className="w-5 h-5" /> Join Custom Game
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowCustomConfig(true)}
+                        className="w-full py-4 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-100 hover:text-white border border-emerald-500/50 hover:border-emerald-400 font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                      >
+                        <Settings className="w-5 h-5" /> Configure Game
+                      </button>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="custom-config"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    className="flex flex-col h-full"
+                  >
+                    <div className="flex items-center gap-3 mb-6">
+                      <button 
+                        onClick={() => setShowCustomConfig(false)}
+                        className="p-2 rounded-lg bg-black/50 hover:bg-emerald-500/20 border border-emerald-500/30 transition-colors"
+                      >
+                        <ChevronLeft className="w-6 h-6 text-emerald-400" />
+                      </button>
+                      <h2 className="text-2xl font-bold text-emerald-400 tracking-wider uppercase">Configuration</h2>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 flex-grow">
+                      <div className="space-y-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={customConfig.teams}
+                            onChange={(e) => setCustomConfig({...customConfig, teams: e.target.checked})}
+                            className="w-5 h-5 accent-emerald-500"
+                          />
+                          <span className="text-white font-medium">Enable Teams</span>
+                        </label>
+                        
+                        {customConfig.teams && (
+                          <div>
+                            <label className="block text-sm text-emerald-200 mb-1">Team Size: {customConfig.teamSize}</label>
+                            <input 
+                              type="range" min="2" max="10" step="1"
+                              value={customConfig.teamSize}
+                              onChange={(e) => setCustomConfig({...customConfig, teamSize: parseInt(e.target.value)})}
+                              className="w-full accent-emerald-500"
+                            />
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-sm text-emerald-200 mb-1">Enemy Bots: {customConfig.enemyBots}</label>
+                          <input 
+                            type="range" min="0" max="50" step="1"
+                            value={customConfig.enemyBots}
+                            onChange={(e) => setCustomConfig({...customConfig, enemyBots: parseInt(e.target.value)})}
+                            className="w-full accent-emerald-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm text-emerald-200 mb-1">Spawn Health: {customConfig.health}</label>
+                          <input 
+                            type="range" min="1" max="2000" step="10"
+                            value={customConfig.health}
+                            onChange={(e) => setCustomConfig({...customConfig, health: parseInt(e.target.value)})}
+                            className="w-full accent-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-emerald-200 mb-1">Speed: {customConfig.speed}</label>
+                          <input 
+                            type="range" min="5" max="100" step="1"
+                            value={customConfig.speed}
+                            onChange={(e) => setCustomConfig({...customConfig, speed: parseInt(e.target.value)})}
+                            className="w-full accent-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm text-emerald-200 mb-1">Spawn Weapon</label>
+                          <select 
+                            value={customConfig.spawnWeapon}
+                            onChange={(e) => setCustomConfig({...customConfig, spawnWeapon: e.target.value})}
+                            className="w-full bg-black/50 border border-emerald-500/30 rounded-lg p-2 text-white outline-none focus:border-emerald-500"
+                          >
+                            <option value="DEFAULT">Default</option>
+                            <option value="REVOLVER">Revolver</option>
+                            <option value="SHOTGUN">Shotgun</option>
+                            <option value="RPG">RPG</option>
+                            <option value="KNIFE">Knife</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleHostCustom}
+                      className="w-full py-4 rounded-xl bg-emerald-500/20 hover:bg-emerald-500 text-emerald-100 hover:text-white border border-emerald-500/50 hover:border-emerald-400 font-bold uppercase tracking-widest transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-[0_0_30px_rgba(16,185,129,0.4)]"
+                    >
+                      <Play className="w-5 h-5" /> Host Custom Game
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

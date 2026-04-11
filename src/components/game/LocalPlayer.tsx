@@ -2,7 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody, useRapier, CapsuleCollider } from '@react-three/rapier';
 import { Vector3, Vector2, Euler, Quaternion, Raycaster } from 'three';
-import { PointerLockControls } from '@react-three/drei';
+import { PointerLockControls, CubeCamera } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
 import { FirstPersonWeapon } from './FirstPersonWeapon';
@@ -29,12 +29,24 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   const sensitivity = useGameStore((state) => state.sensitivity);
   const adminState = useGameStore((state) => state.adminState);
   const gameMode = useGameStore((state) => state.gameMode);
+  const customConfig = useGameStore((state) => state.customConfig);
+  const ultraVisuals = useGameStore((state) => state.ultraVisuals);
+  const isCustomizingControls = useGameStore((state) => state.isCustomizingControls);
   const sensitivityRef = useRef(sensitivity);
   const lastShootTime = useRef(0);
+  const cameraShake = useRef(0);
 
   useEffect(() => {
     sensitivityRef.current = sensitivity;
   }, [sensitivity]);
+
+  useEffect(() => {
+    const handleCameraShake = (e: any) => {
+      cameraShake.current = Math.max(cameraShake.current, e.detail.intensity);
+    };
+    window.addEventListener('cameraShake', handleCameraShake);
+    return () => window.removeEventListener('cameraShake', handleCameraShake);
+  }, []);
 
   useEffect(() => {
     scene.add(camera);
@@ -49,6 +61,9 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
   const lastTouch = useRef<{ x: number, y: number, id: number } | null>(null);
   const lastDashTime = useRef(0);
   const lastGroundedTime = useRef(0);
+  const lastJumpInputTime = useRef(0);
+  const lastJumpTime = useRef(0);
+  const lastVaultTime = useRef(0);
   const mobileDashRef = useRef(false);
   const dashVelocity = useRef(new Vector3());
   const lastFootstepTime = useRef(0);
@@ -60,7 +75,10 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       if (e.code === 'KeyA') keysRef.current.a = true;
       if (e.code === 'KeyS') keysRef.current.s = true;
       if (e.code === 'KeyD') keysRef.current.d = true;
-      if (e.code === 'Space') keysRef.current.space = true;
+      if (e.code === 'Space') {
+        keysRef.current.space = true;
+        lastJumpInputTime.current = performance.now();
+      }
       if (e.code === 'ShiftLeft') keysRef.current.shift = true;
       
       if (e.code === 'KeyE') {
@@ -73,7 +91,11 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       }
       
       if (e.code === 'KeyF') {
-        window.dispatchEvent(new CustomEvent('jumpPadBoost', { detail: { power: 32 } }));
+        window.dispatchEvent(new Event('playerMelee'));
+      }
+
+      if (e.code === 'KeyC') {
+        window.dispatchEvent(new Event('playerBuildRamp'));
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -134,9 +156,75 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       window.addEventListener('touchend', handleTouchEnd);
     }
 
+    // Build Ramp
+    const handleBuildRamp = () => {
+      const state = useGameStore.getState();
+      if (state.isCustomizingControls) return;
+      const currentMe = state.myId ? state.players[state.myId] : null;
+      if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
+
+      const ry = camera.rotation.y;
+      const snappedRy = Math.round(ry / (Math.PI / 2)) * (Math.PI / 2);
+      const dirX = -Math.sin(snappedRy);
+      const dirZ = -Math.cos(snappedRy);
+
+      const pos = bodyRef.current?.translation();
+      if (!pos) return;
+
+      const gridX = Math.floor(pos.x / 20) * 20 + 10;
+      const gridZ = Math.floor(pos.z / 20) * 20 + 10;
+
+      const targetX = gridX + dirX * 20;
+      const targetZ = gridZ + dirZ * 20;
+
+      const playerRayOrigin = new Vector3(pos.x, pos.y, pos.z);
+      const playerHit = world.castRay(new rapier.Ray(playerRayOrigin, new Vector3(0, -1, 0)), 5, true);
+      const currentGroundY = playerHit ? pos.y - playerHit.timeOfImpact : pos.y - 1;
+
+      const targetY = currentGroundY + 10;
+
+      socket.emit('buildRamp', { x: targetX, y: targetY, z: targetZ, ry: snappedRy });
+      playSound('click'); // or a build sound
+    };
+
+    // Melee Attack
+    const handleMelee = () => {
+      const state = useGameStore.getState();
+      if (state.isCustomizingControls) return;
+      const currentMe = state.myId ? state.players[state.myId] : null;
+      if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
+
+      if (performance.now() - lastShootTime.current < 800) return; // Melee cooldown
+      lastShootTime.current = performance.now();
+
+      const rayOrigin = camera.position;
+      const rayDir = new Vector3();
+      camera.getWorldDirection(rayDir);
+
+      const rOrigin = rayOrigin.clone().add(rayDir.clone().multiplyScalar(0.5));
+      const hitPoint = new Vector3().copy(rOrigin).add(rayDir.clone().multiplyScalar(5)); // Short range
+
+      socket.emit('shoot', { 
+        weapon: 'MELEE', 
+        from: [rOrigin.x, rOrigin.y, rOrigin.z], 
+        to: [hitPoint.x, hitPoint.y, hitPoint.z] 
+      });
+
+      // Recoil/Swing effect
+      camera.rotation.x += 0.05;
+      camera.rotation.y += 0.1;
+      setTimeout(() => {
+        camera.rotation.y -= 0.1;
+      }, 100);
+      
+      window.dispatchEvent(new CustomEvent('playerShoot', { detail: { cooldown: 800 } }));
+      playSound('knife_swing');
+    };
+
     // Shooting
     const handleShoot = () => {
       const state = useGameStore.getState();
+      if (state.isCustomizingControls) return;
       const currentMe = state.myId ? state.players[state.myId] : null;
       if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
 
@@ -145,6 +233,9 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       
       if (performance.now() - lastShootTime.current < (cooldowns[weapon] || 200)) return;
       lastShootTime.current = performance.now();
+
+      const shakeIntensities: Record<string, number> = { DEFAULT: 0.1, REVOLVER: 0.3, SHOTGUN: 0.4, RPG: 0.5, KNIFE: 0.1 };
+      window.dispatchEvent(new CustomEvent('cameraShake', { detail: { intensity: shakeIntensities[weapon] || 0.1 } }));
 
       const rayOrigin = camera.position;
       const rayDir = new Vector3();
@@ -194,6 +285,8 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     };
 
     const handleMobileDash = () => {
+      const state = useGameStore.getState();
+      if (state.isCustomizingControls) return;
       mobileDashRef.current = true;
     };
 
@@ -205,6 +298,8 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     };
 
     const handleJumpPadBoost = (e: any) => {
+      const state = useGameStore.getState();
+      if (state.isCustomizingControls) return;
       if (bodyRef.current) {
         const pos = bodyRef.current.translation();
         rayOrigin.x = pos.x;
@@ -232,6 +327,8 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
     window.addEventListener('mousedown', handleShoot);
     window.addEventListener('mobileShoot', handleShoot);
+    window.addEventListener('playerMelee', handleMelee);
+    window.addEventListener('playerBuildRamp', handleBuildRamp);
     window.addEventListener('mobileDash', handleMobileDash);
     window.addEventListener('mobileInteract', handleMobileInteract);
     window.addEventListener('adminTeleport', handleAdminTeleport);
@@ -247,6 +344,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('mousedown', handleShoot);
       window.removeEventListener('mobileShoot', handleShoot);
+      window.removeEventListener('playerMelee', handleMelee);
       window.removeEventListener('mobileDash', handleMobileDash);
       window.removeEventListener('mobileInteract', handleMobileInteract);
       window.removeEventListener('adminTeleport', handleAdminTeleport);
@@ -274,9 +372,9 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     const pos = bodyRef.current.translation();
     const linvel = bodyRef.current.linvel();
 
-    if (me.health <= 0) {
-      camera.position.set(pos.x, pos.y + 1.5, pos.z);
-      if (socket) {
+    if (me.health <= 0 || isCustomizingControls) {
+      camera.position.set(pos.x, pos.y + 0.6, pos.z);
+      if (socket && me.health > 0) {
         socket.emit('move', { x: pos.x, y: pos.y, z: pos.z, rx: camera.rotation.x, ry: camera.rotation.y, rz: camera.rotation.z });
       }
       return;
@@ -339,23 +437,28 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       sideVector.set((keysRef.current.a ? 1 : 0) - (keysRef.current.d ? 1 : 0), 0, 0);
     }
 
+    let baseSpeed = gameMode === 'speed' ? 50 : BASE_SPEED;
+    if (gameMode === 'custom' && customConfig) {
+      baseSpeed = customConfig.speed;
+    }
+
     if (adminState.flying) {
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      const currentSpeed = gameMode === 'speed' ? 50 : BASE_SPEED;
-      direction.multiplyScalar(adminState.speed || currentSpeed).applyEuler(camera.rotation);
+      const currentSpeed = adminState.speed || baseSpeed;
+      direction.multiplyScalar(currentSpeed).applyEuler(camera.rotation);
       
       bodyRef.current.setGravityScale(0, true);
       let verticalVelocity = direction.y;
-      if (keysRef.current.space) verticalVelocity += (adminState.speed || currentSpeed);
-      if (keysRef.current.shift) verticalVelocity -= (adminState.speed || currentSpeed);
+      if (keysRef.current.space) verticalVelocity += currentSpeed;
+      if (keysRef.current.shift) verticalVelocity -= currentSpeed;
       bodyRef.current.setLinvel({ x: direction.x, y: verticalVelocity, z: direction.z }, true);
     } else {
-      const currentSpeed = gameMode === 'speed' ? 50 : BASE_SPEED;
+      const currentSpeed = adminState.speed || baseSpeed;
       eulerY.set(0, camera.rotation.y, 0, 'YXZ');
       direction.subVectors(frontVector, sideVector);
       if (direction.lengthSq() > 0) direction.normalize();
-      direction.multiplyScalar(adminState.speed || currentSpeed).applyEuler(eulerY);
+      direction.multiplyScalar(currentSpeed).applyEuler(eulerY);
       
       // Jump
       let isGrounded = false;
@@ -385,13 +488,17 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       }
 
       // Coyote time: 150ms after leaving the ground
-      const canJump = isGrounded || (now - lastGroundedTime.current < 150);
+      const canJump = (isGrounded || (now - lastGroundedTime.current < 150)) && (now - lastJumpTime.current > 250);
+      // Jump buffering: 150ms before hitting the ground
+      const wantsToJump = keysRef.current.space || (now - lastJumpInputTime.current < 150);
 
-      if (keysRef.current.space && canJump) {
+      if (wantsToJump && canJump) {
         // Reset vertical velocity before applying impulse to ensure consistent jump height
         bodyRef.current.setLinvel({ x: linvel.x, y: 0, z: linvel.z }, true);
         bodyRef.current.applyImpulse({ x: 0, y: JUMP_FORCE, z: 0 }, true);
         lastGroundedTime.current = 0; // Prevent double jumping
+        lastJumpInputTime.current = 0; // Consume jump buffer
+        lastJumpTime.current = now;
         keysRef.current.space = false; // Require releasing and pressing space again to jump
         window.dispatchEvent(new CustomEvent('playerJump'));
         playSound('jump');
@@ -407,7 +514,6 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
       // Dash
       if (keysRef.current.shift || mobileDashRef.current) {
-        const now = performance.now();
         if (now - lastDashTime.current > 1000) { // 1 second cooldown
           lastDashTime.current = now;
           window.dispatchEvent(new CustomEvent('playerDash'));
@@ -425,7 +531,12 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
             dashDir.set(0, 0, -1); // Fallback if looking straight down
           }
           
-          const dashBurst = gameMode === 'speed' ? (isGrounded ? 150 : 200) : (isGrounded ? 87 : 110);
+          let dashBurst = isGrounded ? 87 : 110;
+          if (gameMode === 'speed') {
+            dashBurst = isGrounded ? 150 : 200;
+          } else if (gameMode === 'custom' && customConfig) {
+            dashBurst = isGrounded ? customConfig.speed * 7 : customConfig.speed * 9;
+          }
           dashVelocity.current.copy(dashDir).multiplyScalar(dashBurst); // Dash burst speed
         }
         mobileDashRef.current = false;
@@ -440,27 +551,28 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
       if (direction.lengthSq() > 0) {
         const moveDir = direction.clone().normalize();
         
-        // Raycast from knees (y - 0.8) starting slightly behind player center
-        // solid=false ensures we ignore colliders we are already inside (like the player's own capsule or the floor if we penetrate it slightly on landing)
-        // Starting slightly behind ensures we don't start inside a wall if we penetrate it slightly while pushing against it
-        const rayStartX = pos.x - moveDir.x * 0.1;
-        const rayStartZ = pos.z - moveDir.z * 0.1;
+        // Ledge detection via downward raycast
+        // Start a ray slightly in front of the player and above their head, casting downward
+        const ledgeOrigin = { 
+          x: pos.x + moveDir.x * 0.6, 
+          y: pos.y + 1.0, 
+          z: pos.z + moveDir.z * 0.6 
+        };
+        const downRay = new rapier.Ray(ledgeOrigin, { x: 0, y: -1, z: 0 });
+        const downHit = world.castRayAndGetNormal(downRay, 2.0, true);
         
-        const kneeRayOrigin = { x: rayStartX, y: pos.y - 0.8, z: rayStartZ };
-        const kneeRayDir = { x: moveDir.x, y: 0, z: moveDir.z };
-        const kneeRay = new rapier.Ray(kneeRayOrigin, kneeRayDir);
-        const kneeHit = world.castRayAndGetNormal(kneeRay, 0.7, false);
-        
-        // Raycast from head (y + 0.6) starting slightly behind player center
-        const headRayOrigin = { x: rayStartX, y: pos.y + 0.6, z: rayStartZ };
-        const headRayDir = { x: moveDir.x, y: 0, z: moveDir.z };
-        const headRay = new rapier.Ray(headRayOrigin, headRayDir);
-        const headHit = world.castRay(headRay, 0.7, false);
-        
-        // If knees hit something but head doesn't, there is a ledge we can climb
-        // Ensure we don't climb flat floors (normal.y > 0.5) to prevent bouncing on landing
-        if (kneeHit && (!kneeHit.normal || Math.abs(kneeHit.normal.y) < 0.5) && !headHit) {
-          climbVelocity = Math.max(linvel.y, 8); // Apply upward velocity to vault over
+        if (downHit) {
+          const hitY = ledgeOrigin.y - downHit.timeOfImpact;
+          // Check if the hit surface is between knee height and head height
+          // Also ensure the surface is relatively flat (normal.y > 0.5) so we don't climb steep walls
+          if (hitY > pos.y - 0.8 && hitY < pos.y + 0.6) {
+            if (!downHit.normal || downHit.normal.y > 0.5) {
+              if (now - lastVaultTime.current > 500) {
+                climbVelocity = Math.max(linvel.y, 8); // Apply upward velocity to vault over
+                lastVaultTime.current = now;
+              }
+            }
+          }
         }
       }
 
@@ -469,7 +581,22 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     }
 
     // Update Camera Position directly to prevent jitter at high sensitivities
-    camera.position.set(pos.x, pos.y + 1.5, pos.z);
+    camera.position.set(pos.x, pos.y + 0.6, pos.z);
+
+    // Apply camera shake
+    if (cameraShake.current > 0.01) {
+      camera.position.x += (Math.random() - 0.5) * cameraShake.current;
+      camera.position.y += (Math.random() - 0.5) * cameraShake.current;
+      camera.position.z += (Math.random() - 0.5) * cameraShake.current;
+      
+      // Also apply slight rotation shake for more impact
+      camera.rotation.z = (Math.random() - 0.5) * cameraShake.current * 0.1;
+
+      cameraShake.current *= 0.8; // Decay
+    } else {
+      cameraShake.current = 0;
+      camera.rotation.z = 0; // Reset rotation shake
+    }
 
     // Sync to server
     if (socket) {
@@ -521,10 +648,22 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
       <RigidBody ref={bodyRef} colliders={false} mass={1} type="dynamic" position={[me?.x || 0, me?.y || 100, me?.z || 0]} enabledRotations={[false, false, false]} friction={0} restitution={0} ccd gravityScale={2.5}>
         <CapsuleCollider args={[0.5, 0.4]} friction={0} restitution={0} sensor={adminState.noclip} />
-        <mesh visible={false} userData={{ playerId: myId }}>
+        <mesh visible={true} userData={{ playerId: myId }}>
           <capsuleGeometry args={[0.4, 1, 4, 8]} />
-          <meshBasicMaterial color="red" />
+          <meshStandardMaterial color={me?.color || '#fff'} roughness={0.5} metalness={0.5} />
         </mesh>
+        
+        {/* CubeCamera to generate envMap for reflections */}
+        {ultraVisuals && (
+          <CubeCamera resolution={256} frames={Infinity} near={0.1} far={1000} position={[0, 0.5, 0]}>
+            {(texture) => {
+              useEffect(() => {
+                useGameStore.getState().setEnvMap(texture);
+              }, [texture]);
+              return <group />;
+            }}
+          </CubeCamera>
+        )}
       </RigidBody>
     </>
   );

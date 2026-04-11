@@ -1,8 +1,9 @@
-import { useGameStore } from '../../store/gameStore';
+import { useGameStore, defaultMobileControls } from '../../store/gameStore';
 import { Joystick } from 'react-joystick-component';
 import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar, LogOut } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { playSound } from '../../utils/audio';
+import { MobileControls } from './MobileControls';
 
 export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: boolean, onExit?: () => void }) {
   const myId = useGameStore((state) => state.myId);
@@ -29,18 +30,24 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
   const enableLighting = useGameStore((state) => state.enableLighting);
   const shadowQuality = useGameStore((state) => state.shadowQuality);
   const setShadowQuality = useGameStore((state) => state.setShadowQuality);
+  const ultraVisuals = useGameStore((state) => state.ultraVisuals);
+  const setUltraVisuals = useGameStore((state) => state.setUltraVisuals);
+  const customConfig = useGameStore((state) => state.customConfig);
   const [adminOpen, setAdminOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const isCustomizingControls = useGameStore((state) => state.isCustomizingControls);
+  const setIsCustomizingControls = useGameStore((state) => state.setIsCustomizingControls);
   const [settingsTab, setSettingsTab] = useState<'gameplay' | 'graphics'>('gameplay');
   const [adminTab, setAdminTab] = useState<'player' | 'world' | 'actions'>('player');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [adminWeaponsOpen, setAdminWeaponsOpen] = useState(false);
-  const [adminTpOpen, setAdminTpOpen] = useState(false);
-  const [adminBanOpen, setAdminBanOpen] = useState(false);
-  const [adminEventsOpen, setAdminEventsOpen] = useState(false);
+  const [adminTargetId, setAdminTargetId] = useState<string>('');
+  const [adminTargetSpeed, setAdminTargetSpeed] = useState<number>(50);
+  const [adminTargetHealth, setAdminTargetHealth] = useState<number>(500);
+  const [adminTeleportDestId, setAdminTeleportDestId] = useState<string>('');
   
   const [reloadProgress, setReloadProgress] = useState(100);
   const [isReloading, setIsReloading] = useState(false);
+  const [canMelee, setCanMelee] = useState(false);
 
   useEffect(() => {
     const handleShoot = (e: any) => {
@@ -84,6 +91,39 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
       if (time - lastTime > 33) { // ~30fps
         setTick(t => t + 1);
         lastTime = time;
+        
+        // Check for melee targets
+        const state = useGameStore.getState();
+        const me = state.players[state.myId || ''];
+        if (me) {
+          let foundTarget = false;
+          for (const id in state.players) {
+            if (id === state.myId) continue;
+            const p = state.players[id];
+            if (p.health > 0) {
+              const dist = Math.sqrt((p.x - me.x)**2 + (p.y - me.y)**2 + (p.z - me.z)**2);
+              if (dist < 5) {
+                foundTarget = true;
+                break;
+              }
+            }
+          }
+          if (!foundTarget) {
+            for (const id in state.entities) {
+              const e = state.entities[id];
+              if (e.health > 0) {
+                const dist = Math.sqrt((e.x - me.x)**2 + (e.y - me.y)**2 + (e.z - me.z)**2);
+                if (dist < 5) {
+                  foundTarget = true;
+                  break;
+                }
+              }
+            }
+          }
+          setCanMelee(foundTarget);
+        } else {
+          setCanMelee(false);
+        }
       }
       animationFrameId = requestAnimationFrame(loop);
     };
@@ -93,7 +133,10 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
 
   if (!me) return null;
 
-  const maxHealth = gameMode === 'speed' ? 125 : 500;
+  let maxHealth = gameMode === 'speed' ? 125 : 500;
+  if (gameMode === 'custom' && customConfig) {
+    maxHealth = customConfig.health;
+  }
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -160,12 +203,12 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-auto animate-in fade-in duration-500">
           <div className="text-center flex flex-col items-center gap-6">
             <h1 className="text-7xl font-black text-red-500 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(255,0,0,0.5)]">
-              {gameMode === 'team' && (me.lives ?? 0) <= 0 ? 'ELIMINATED' : 'YOU DIED'}
+              {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (me.lives ?? 0) <= 0 ? 'ELIMINATED' : 'YOU DIED'}
             </h1>
             <p className="text-2xl text-white font-mono uppercase tracking-widest opacity-80">
-              {gameMode === 'team' && (me.lives ?? 0) <= 0 ? 'Spectating' : 'Waiting for respawn...'}
+              {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (me.lives ?? 0) <= 0 ? 'Spectating' : 'Waiting for respawn...'}
             </p>
-            {!(gameMode === 'team' && (me.lives ?? 0) <= 0) && (
+            {!((gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (me.lives ?? 0) <= 0) && (
               <button 
                 className="bg-red-600 hover:bg-red-500 text-white font-bold py-4 px-8 rounded-xl text-xl uppercase tracking-widest transition-colors border-2 border-red-400 shadow-[0_0_20px_rgba(255,0,0,0.5)]"
                 onClick={() => {
@@ -200,7 +243,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
             <Gamepad2 size={18} />
             <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
           </div>
-          {gameMode === 'team' && (
+          {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (
             <div className="flex items-center gap-3 text-yellow-400" title="Lives">
               <User size={18} />
               <span className="font-bold text-sm">{me.lives}</span>
@@ -354,6 +397,26 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
         </div>
       </div>
 
+      {/* Build Ramp Prompt */}
+      {!isMobile && (
+        <div className="absolute bottom-[30%] left-1/2 -translate-x-1/2 bg-orange-900/80 border border-orange-500/50 px-6 py-3 rounded-xl backdrop-blur-md flex items-center gap-3 pointer-events-auto shadow-[0_0_20px_rgba(255,165,0,0.5)]">
+          <span className="text-white font-bold uppercase tracking-widest text-lg">
+            BUILD RAMP
+          </span>
+          <span className="bg-white text-black px-3 py-1 rounded text-sm font-bold">C</span>
+        </div>
+      )}
+
+      {/* Melee Prompt */}
+      {!isMobile && canMelee && me?.weapon === 'KNIFE' && (
+        <div className="absolute bottom-1/3 left-1/2 -translate-x-1/2 bg-red-900/80 border border-red-500/50 px-6 py-3 rounded-xl backdrop-blur-md flex items-center gap-3 pointer-events-auto shadow-[0_0_20px_rgba(255,0,0,0.5)] animate-pulse">
+          <span className="text-white font-bold uppercase tracking-widest text-lg">
+            MELEE ATTACK
+          </span>
+          <span className="bg-white text-black px-3 py-1 rounded text-sm font-bold">F</span>
+        </div>
+      )}
+
       {/* Interact Prompt */}
       {interactable && (
         <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 bg-black/80 border border-white/20 px-4 py-2 rounded-xl backdrop-blur-md flex items-center gap-3 pointer-events-auto">
@@ -377,40 +440,12 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
 
       {/* Mobile Controls */}
       {isMobile && (
-        <>
-          <div className="absolute bottom-8 left-8 pointer-events-auto">
-            <Joystick 
-              size={100} 
-              baseColor="rgba(0,0,0,0.5)" 
-              stickColor="rgba(0,255,255,0.5)" 
-              move={(e) => window.dispatchEvent(new CustomEvent('joystickMove', { detail: e }))} 
-              stop={() => window.dispatchEvent(new Event('joystickStop'))} 
-            />
-          </div>
-          <div className="absolute bottom-[5vmin] right-[5vmin] pointer-events-auto flex gap-[3vmin] items-end">
-            <button 
-              className="w-[15vmin] h-[15vmin] max-w-16 max-h-16 rounded-full bg-green-500/50 border-2 border-green-400 shadow-[0_0_20px_rgba(0,255,0,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-[2vmin]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('jumpPadBoost', { detail: { power: 32 } })); }}
-            >
-              <ChevronUp className="text-white w-1/2 h-1/2" />
-            </button>
-            <button 
-              className="w-[15vmin] h-[15vmin] max-w-16 max-h-16 rounded-full bg-cyan-500/50 border-2 border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none self-end mb-[2vmin]"
-              style={{ touchAction: 'none' }}
-              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new Event('mobileDash')); }}
-            >
-              <Zap className="text-white w-1/2 h-1/2" />
-            </button>
-            <button 
-              className="w-[20vmin] h-[20vmin] max-w-20 max-h-20 rounded-full bg-fuchsia-500/50 border-2 border-fuchsia-400 shadow-[0_0_20px_rgba(255,0,255,0.5)] flex items-center justify-center active:scale-95 transition-transform select-none"
-              style={{ touchAction: 'none' }}
-              onPointerDown={(e) => { e.stopPropagation(); window.dispatchEvent(new Event('mobileShoot')); }}
-            >
-              <Crosshair className="text-white w-1/2 h-1/2" />
-            </button>
-          </div>
-        </>
+        <MobileControls 
+          isCustomizing={isCustomizingControls} 
+          onStopCustomizing={() => setIsCustomizingControls(false)} 
+          canMelee={canMelee} 
+          me={me} 
+        />
       )}
 
       {/* Settings Modal */}
@@ -461,6 +496,27 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                       className="w-full accent-cyan-400"
                     />
                   </div>
+                  {isMobile && (
+                    <div className="flex flex-col gap-2">
+                      <button
+                        className="bg-purple-500/20 hover:bg-purple-500/40 text-purple-400 border border-purple-500/50 rounded-lg p-3 font-bold uppercase tracking-widest text-sm transition-colors"
+                        onClick={() => {
+                          setIsCustomizingControls(true);
+                          setSettingsOpen(false);
+                        }}
+                      >
+                        Customize Mobile Controls
+                      </button>
+                      <button
+                        className="bg-red-500/20 hover:bg-red-500/40 text-red-400 border border-red-500/50 rounded-lg p-3 font-bold uppercase tracking-widest text-sm transition-colors"
+                        onClick={() => {
+                          useGameStore.getState().setMobileControls(defaultMobileControls);
+                        }}
+                      >
+                        Reset Controls to Default
+                      </button>
+                    </div>
+                  )}
                   <button
                     className="mt-2 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-400 border border-cyan-500/50 rounded-lg p-3 font-bold uppercase tracking-widest text-sm transition-colors"
                     onClick={() => {
@@ -527,15 +583,31 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                     />
                     Enable Lighting & Shadows
                   </label>
+                  <label className="flex items-center gap-2 text-white text-xs font-bold uppercase tracking-widest cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={ultraVisuals}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setUltraVisuals(checked);
+                        if (checked) {
+                          useGameStore.getState().setEnableLighting(true);
+                          setShadowQuality('high');
+                        }
+                      }}
+                      className="accent-cyan-400"
+                    />
+                    Ultra Visuals
+                  </label>
                   {enableLighting && (
                     <div className="bg-black/30 p-3 rounded-lg border border-white/5 mt-2">
                       <label className="text-white text-xs font-bold uppercase tracking-widest mb-2 block">Shadow Quality</label>
                       <div className="flex gap-2">
-                        {['low', 'medium', 'high', 'ultra'].map(q => (
+                        {['low', 'medium', 'high'].map(q => (
                           <button
                             key={q}
                             className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${shadowQuality === q ? 'bg-cyan-500 text-black' : 'bg-black/50 text-gray-400 hover:text-white border border-white/10'}`}
-                            onClick={() => setShadowQuality(q as 'low' | 'medium' | 'high' | 'ultra')}
+                            onClick={() => setShadowQuality(q as 'low' | 'medium' | 'high')}
                           >
                             {q}
                           </button>
@@ -572,7 +644,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                 className={`text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-t-lg transition-colors ${adminTab === 'player' ? 'text-red-400 border-b-2 border-red-400' : 'text-gray-400 hover:text-white'}`}
                 onClick={() => setAdminTab('player')}
               >
-                Player
+                Self
               </button>
               <button 
                 className={`text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-t-lg transition-colors ${adminTab === 'world' ? 'text-red-400 border-b-2 border-red-400' : 'text-gray-400 hover:text-white'}`}
@@ -584,7 +656,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                 className={`text-xs font-bold uppercase tracking-widest px-4 py-2 rounded-t-lg transition-colors ${adminTab === 'actions' ? 'text-red-400 border-b-2 border-red-400' : 'text-gray-400 hover:text-white'}`}
                 onClick={() => setAdminTab('actions')}
               >
-                Actions
+                Players
               </button>
             </div>
             
@@ -632,34 +704,15 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                   <div className="bg-black/30 p-4 rounded-lg border border-white/5">
                     <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
                       <span>Speed</span>
-                      <span className="text-white">{adminState.speed || (gameMode === 'speed' ? 50 : 12)}</span>
+                      <span className="text-white">{adminState.speed || (gameMode === 'speed' ? 50 : (gameMode === 'custom' && customConfig ? customConfig.speed : 12))}</span>
                     </label>
                     <input 
                       type="range" 
                       min="5" max="100" step="1" 
-                      value={adminState.speed || (gameMode === 'speed' ? 50 : 12)} 
+                      value={adminState.speed || (gameMode === 'speed' ? 50 : (gameMode === 'custom' && customConfig ? customConfig.speed : 12))} 
                       onChange={(e) => setAdminState({ speed: parseInt(e.target.value) })}
                       className="w-full accent-red-500"
                     />
-                  </div>
-
-                  <div className="bg-black/30 p-4 rounded-lg border border-white/5">
-                    <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
-                      Give Weapon
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {['DEFAULT', 'SHOTGUN', 'RPG', 'REVOLVER', 'KNIFE'].map(w => (
-                        <button
-                          key={w}
-                          className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
-                          onClick={() => {
-                            useGameStore.getState().socket?.emit('adminGiveWeapon', w);
-                          }}
-                        >
-                          {w}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 </>
               )}
@@ -696,57 +749,190 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                       ))}
                     </div>
                   </div>
+
+                  <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                    <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
+                      Spawn Bot
+                    </label>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2">
+                        <select 
+                          value={adminTargetId}
+                          onChange={(e) => setAdminTargetId(e.target.value)}
+                          className="flex-1 bg-black/50 border border-red-500/30 rounded-lg p-2 text-white outline-none focus:border-red-500 text-xs"
+                        >
+                          <option value="all">All Players</option>
+                          <option value={myId || ''}>Self ({me.nickname})</option>
+                          {Object.values(players).filter(p => p.id !== myId).map(p => (
+                            <option key={p.id} value={p.id}>{p.nickname || p.id.substring(0, 4)}</option>
+                          ))}
+                        </select>
+                        <input 
+                          type="number" 
+                          placeholder="Health"
+                          value={adminTargetHealth}
+                          onChange={(e) => setAdminTargetHealth(parseInt(e.target.value) || 100)}
+                          className="w-24 bg-black/50 border border-red-500/30 rounded-lg p-2 text-white outline-none focus:border-red-500 text-xs"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['LIGHTBULB', 'DRONE', 'MECH', 'BOSS'].map(type => (
+                          <button
+                            key={type}
+                            className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
+                            onClick={() => {
+                              useGameStore.getState().socket?.emit('adminSpawnBot', type, adminTargetId, adminTargetHealth);
+                            }}
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
 
               {adminTab === 'actions' && (
-                <>
+                <div className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                   <div className="bg-black/30 p-4 rounded-lg border border-white/5">
                     <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
-                      Teleport To Player
+                      Select Target Player
                     </label>
-                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                    <select 
+                      value={adminTargetId}
+                      onChange={(e) => setAdminTargetId(e.target.value)}
+                      className="w-full bg-black/50 border border-red-500/30 rounded-lg p-2 text-white outline-none focus:border-red-500"
+                    >
+                      <option value="">-- Select Player --</option>
+                      <option value={myId || ''}>Self ({me.nickname})</option>
                       {Object.values(players).filter(p => p.id !== myId).map(p => (
-                        <button
-                          key={p.id}
-                          className="text-left text-sm font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-white/5 hover:border-red-500/30"
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent('adminTeleport', { detail: { x: p.x, y: p.y, z: p.z } }));
-                            setAdminOpen(false);
-                          }}
-                        >
-                          {p.nickname || p.id.substring(0, 4)}
-                        </button>
+                        <option key={p.id} value={p.id}>{p.nickname || p.id.substring(0, 4)}</option>
                       ))}
-                      {Object.values(players).filter(p => p.id !== myId).length === 0 && (
-                        <div className="text-gray-500 text-sm italic text-center py-2">No other players online</div>
-                      )}
-                    </div>
+                    </select>
                   </div>
 
-                  <div className="bg-black/30 p-4 rounded-lg border border-white/5">
-                    <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
-                      Ban Player
-                    </label>
-                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                      {Object.values(players).filter(p => p.id !== myId).map(p => (
-                        <button
-                          key={p.id}
-                          className="text-left text-sm font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-white/5 hover:border-red-500/30 flex justify-between items-center group"
-                          onClick={() => {
-                            useGameStore.getState().socket?.emit('adminBan', p.id);
-                          }}
-                        >
-                          <span>{p.nickname || p.id.substring(0, 4)}</span>
-                          <span className="text-xs text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">BAN</span>
-                        </button>
-                      ))}
-                      {Object.values(players).filter(p => p.id !== myId).length === 0 && (
-                        <div className="text-gray-500 text-sm italic text-center py-2">No other players online</div>
+                  {adminTargetId && (
+                    <>
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                        <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
+                          Teleport Target To
+                        </label>
+                        <div className="flex gap-2">
+                          <select 
+                            value={adminTeleportDestId}
+                            onChange={(e) => setAdminTeleportDestId(e.target.value)}
+                            className="flex-1 bg-black/50 border border-red-500/30 rounded-lg p-2 text-white outline-none focus:border-red-500"
+                          >
+                            <option value="">-- Select Destination --</option>
+                            {Object.values(players).filter(p => p.id !== adminTargetId).map(p => (
+                              <option key={p.id} value={p.id}>{p.nickname || p.id.substring(0, 4)}</option>
+                            ))}
+                          </select>
+                          <button
+                            disabled={!adminTeleportDestId}
+                            onClick={() => {
+                              if (adminTargetId === myId) {
+                                const dest = players[adminTeleportDestId];
+                                if (dest) window.dispatchEvent(new CustomEvent('adminTeleport', { detail: { x: dest.x, y: dest.y, z: dest.z } }));
+                              } else {
+                                useGameStore.getState().socket?.emit('adminTeleportPlayer', adminTargetId, adminTeleportDestId);
+                              }
+                            }}
+                            className="px-4 py-2 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Teleport
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                        <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
+                          Give Weapon
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {['DEFAULT', 'SHOTGUN', 'RPG', 'REVOLVER', 'KNIFE'].map(w => (
+                            <button
+                              key={w}
+                              className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
+                              onClick={() => {
+                                useGameStore.getState().socket?.emit('adminGiveWeapon', w, adminTargetId);
+                              }}
+                            >
+                              {w}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                        <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
+                          <span>Set Speed</span>
+                          <span className="text-white">{adminTargetSpeed}</span>
+                        </label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="range" 
+                            min="5" max="100" step="1" 
+                            value={adminTargetSpeed} 
+                            onChange={(e) => setAdminTargetSpeed(parseInt(e.target.value))}
+                            className="flex-1 accent-red-500"
+                          />
+                          <button
+                            onClick={() => {
+                              if (adminTargetId === myId) {
+                                setAdminState({ speed: adminTargetSpeed });
+                              } else {
+                                useGameStore.getState().socket?.emit('adminSetSpeed', adminTargetId, adminTargetSpeed);
+                              }
+                            }}
+                            className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/50 transition-colors text-xs font-bold"
+                          >
+                            SET
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                        <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
+                          <span>Set Health</span>
+                          <span className="text-white">{adminTargetHealth}</span>
+                        </label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="range" 
+                            min="1" max="2000" step="10" 
+                            value={adminTargetHealth} 
+                            onChange={(e) => setAdminTargetHealth(parseInt(e.target.value))}
+                            className="flex-1 accent-red-500"
+                          />
+                          <button
+                            onClick={() => {
+                              useGameStore.getState().socket?.emit('adminSetHealth', adminTargetId, adminTargetHealth);
+                            }}
+                            className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/50 transition-colors text-xs font-bold"
+                          >
+                            SET
+                          </button>
+                        </div>
+                      </div>
+
+                      {adminTargetId !== myId && (
+                        <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                          <button
+                            onClick={() => {
+                              useGameStore.getState().socket?.emit('adminBan', adminTargetId);
+                              setAdminTargetId('');
+                            }}
+                            className="w-full py-2 bg-red-900/50 hover:bg-red-600 text-white rounded-lg border border-red-500/50 transition-colors font-bold uppercase tracking-widest"
+                          >
+                            Ban Player
+                          </button>
+                        </div>
                       )}
-                    </div>
-                  </div>
-                </>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </div>

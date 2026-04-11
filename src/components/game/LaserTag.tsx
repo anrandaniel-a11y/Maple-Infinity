@@ -11,6 +11,8 @@ import { Entities } from './Entities';
 import { SpecialEvents } from './SpecialEvents';
 
 import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows, Text } from '@react-three/drei';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { BlendFunction } from 'postprocessing';
 
 import { TeamLobby } from './TeamLobby';
 
@@ -222,7 +224,7 @@ function RemotePlayers() {
   );
 }
 
-export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare', onExit?: () => void }) {
+export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare', onExit?: () => void }) {
   const connect = useGameStore((state) => state.connect);
   const disconnect = useGameStore((state) => state.disconnect);
   const myId = useGameStore((state) => state.myId);
@@ -236,7 +238,8 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
   const [dpr, setDpr] = useState(1);
 
   const shadowQuality = useGameStore((state) => state.shadowQuality);
-  const shadowMapSize = shadowQuality === 'low' ? 512 : shadowQuality === 'medium' ? 1024 : shadowQuality === 'high' ? 2048 : 4096;
+  const ultraVisuals = useGameStore((state) => state.ultraVisuals);
+  const shadowMapSize = ultraVisuals ? 4096 : shadowQuality === 'low' ? 512 : shadowQuality === 'medium' ? 1024 : 2048;
 
   const [isMobile, setIsMobile] = useState(false);
 
@@ -291,10 +294,10 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
         )}
         <color attach="background" args={['#050505']} />
         
-        {enableLighting && shadowQuality === 'ultra' && (
+        {enableLighting && ultraVisuals && (
           <fogExp2 attach="fog" args={['#050505', 0.006]} />
         )}
-        {enableLighting && shadowQuality !== 'ultra' && (
+        {enableLighting && !ultraVisuals && (
           <fog attach="fog" args={['#050505', 20, renderDistance]} />
         )}
 
@@ -322,7 +325,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
               color="#00ffff" 
               distance={200} 
               decay={2} 
-              castShadow={shadowQuality === 'ultra' || shadowQuality === 'high'}
+              castShadow={ultraVisuals || shadowQuality === 'high'}
               shadow-mapSize-width={shadowMapSize / 2}
               shadow-mapSize-height={shadowMapSize / 2}
               shadow-bias={-0.001}
@@ -342,6 +345,18 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
         <Lasers />
         <Shockwaves />
         <DamageNumbers />
+
+        {/* Post-processing for Ultra Visuals */}
+        {ultraVisuals && (
+          <EffectComposer multisampling={4}>
+            <Bloom 
+              luminanceThreshold={0.2} 
+              luminanceSmoothing={0.9} 
+              intensity={1.5} 
+              mipmapBlur 
+            />
+          </EffectComposer>
+        )}
       </Canvas>
 
       <UI isMobile={isMobile} isAdmin={isAdmin} onExit={onExit} />

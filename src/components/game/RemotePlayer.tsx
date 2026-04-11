@@ -1,4 +1,4 @@
-import { useRef, memo } from 'react';
+import { useRef, memo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group, Mesh } from 'three';
 import { Text } from '@react-three/drei';
@@ -40,8 +40,20 @@ const targetEuler = new THREE.Euler();
 
 export const RemotePlayer = memo(function RemotePlayer({ player }: RemotePlayerProps) {
   const groupRef = useRef<Group>(null);
+  const weaponGroupRef = useRef<Group>(null);
+  const meleeTimeRef = useRef(0);
   
   useFrustumCulling(groupRef, 3);
+
+  useEffect(() => {
+    const handleMelee = (e: any) => {
+      if (e.detail.id === player.id) {
+        meleeTimeRef.current = 1.0;
+      }
+    };
+    window.addEventListener('remoteMelee', handleMelee);
+    return () => window.removeEventListener('remoteMelee', handleMelee);
+  }, [player.id]);
 
   useFrame((state, delta) => {
     if (!groupRef.current || !groupRef.current.visible) return;
@@ -62,10 +74,27 @@ export const RemotePlayer = memo(function RemotePlayer({ player }: RemotePlayerP
     if (healthBar) {
       healthBar.lookAt(state.camera.position);
     }
+
+    // Melee animation
+    if (weaponGroupRef.current) {
+      if (meleeTimeRef.current > 0) {
+        meleeTimeRef.current = Math.max(0, meleeTimeRef.current - delta * 5);
+        // Swing forward and down
+        weaponGroupRef.current.rotation.x = Math.sin(meleeTimeRef.current * Math.PI) * -1.5;
+        weaponGroupRef.current.position.z = -0.6 - Math.sin(meleeTimeRef.current * Math.PI) * 0.5;
+      } else {
+        weaponGroupRef.current.rotation.x = 0;
+        weaponGroupRef.current.position.z = -0.6;
+      }
+    }
   });
 
   const gameMode = useGameStore((state) => state.gameMode);
-  const maxHealth = gameMode === 'speed' ? 125 : 500;
+  const customConfig = useGameStore((state) => state.customConfig);
+  let maxHealth = gameMode === 'speed' ? 125 : 500;
+  if (gameMode === 'custom' && customConfig) {
+    maxHealth = customConfig.health;
+  }
   const healthRatio = Math.max(0.001, player.health / maxHealth);
   const healthMat = player.health > maxHealth / 2 ? healthHighMat : player.health > maxHealth / 5 ? healthMedMat : healthLowMat;
 
@@ -79,7 +108,7 @@ export const RemotePlayer = memo(function RemotePlayer({ player }: RemotePlayerP
       </group>
 
       {/* Gun Visual */}
-      <group position={[0.4, 0.5, -0.6]}>
+      <group ref={weaponGroupRef} position={[0.4, 0.5, -0.6]}>
         <WeaponModel type={player.weapon} color={player.color} />
       </group>
 

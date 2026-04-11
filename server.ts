@@ -34,6 +34,14 @@ function checkHit(player: any, from: number[], to: number[]) {
   return false;
 }
 
+function checkStructureHit(structure: any, from: number[], to: number[]) {
+  const p = { x: structure.x, y: structure.y, z: structure.z };
+  const r2 = 10 * 10; // 10 radius for structure
+  const v = { x: from[0], y: from[1], z: from[2] };
+  const w = { x: to[0], y: to[1], z: to[2] };
+  return distToSegmentSquared(p, v, w) < r2;
+}
+
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
@@ -43,13 +51,23 @@ async function startServer() {
 
   const PORT = 3000;
 
+  interface CustomGameConfig {
+    teams: boolean;
+    teamSize: number;
+    enemyBots: number;
+    health: number;
+    speed: number;
+    spawnWeapon: string;
+  }
+
   interface Room {
     players: Record<string, any>;
     weapons: Record<string, any>;
     medkits: Record<string, any>;
     entities: Record<string, any>;
+    structures: Record<string, any>;
     currentMapIndex: number;
-    mode: 'pvp' | 'pve' | 'team' | 'speed';
+    mode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom';
     difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
     seed: number;
     volume: Int32Array;
@@ -62,12 +80,13 @@ async function startServer() {
     votesToStart: Set<string>;
     activeEvent: { type: 'tornado' | 'lava' | 'meteorite', endTime: number, targets?: {x: number, z: number}[] } | null;
     eventsEnabled: boolean;
+    customConfig?: CustomGameConfig;
   }
 
   const TOTAL_MAPS = 3;
   const WEAPON_TYPES = ['REVOLVER', 'SHOTGUN', 'RPG', 'KNIFE'];
 
-  function createRoom(mode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare'): Room {
+  function createRoom(mode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare', customConfig?: CustomGameConfig): Room {
     const seed = Math.floor(Math.random() * 1000000);
     const volume = generateVolume(seed);
     const weapons: Record<string, any> = {};
@@ -114,6 +133,7 @@ async function startServer() {
       weapons,
       medkits,
       entities: {},
+      structures: {},
       currentMapIndex: 0,
       mode,
       difficulty,
@@ -123,11 +143,12 @@ async function startServer() {
       bossId: null,
       bossPhase: 0,
       bossDefeated: false,
-      state: mode === 'team' ? 'lobby' : 'playing',
+      state: mode === 'team' || mode === 'custom' ? 'lobby' : 'playing',
       teams: {},
       votesToStart: new Set(),
       activeEvent: null,
-      eventsEnabled: true
+      eventsEnabled: true,
+      customConfig
     };
   }
 
@@ -140,6 +161,37 @@ async function startServer() {
     'pve-nightmare': createRoom('pve', 'nightmare'),
     team: createRoom('team', 'normal')
   };
+
+  function destroyStructureAndConnected(rId: string, startId: string) {
+    const r = rooms[rId];
+    if (!r || !r.structures[startId]) return;
+
+    const toDestroy = new Set<string>();
+    const queue = [startId];
+    toDestroy.add(startId);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const current = r.structures[currentId];
+      if (!current) continue;
+
+      for (const otherId in r.structures) {
+        if (!toDestroy.has(otherId)) {
+          const other = r.structures[otherId];
+          const distSq = (current.x - other.x)**2 + (current.y - other.y)**2 + (current.z - other.z)**2;
+          if (distSq <= 30 * 30) { // 30 units
+            toDestroy.add(otherId);
+            queue.push(otherId);
+          }
+        }
+      }
+    }
+
+    for (const id of toDestroy) {
+      delete r.structures[id];
+      io.to(rId).emit('structureDestroyed', id);
+    }
+  }
 
   // Game Loop for bleeding, weapon respawns, and entities
   setInterval(() => {
@@ -183,7 +235,7 @@ async function startServer() {
               room.players[p.lastAttacker].score += 1;
               io.to(roomId).emit('scoreUpdated', { id: p.lastAttacker, score: room.players[p.lastAttacker].score });
             }
-            if (room.mode === 'team') {
+            if (room.mode === 'team' || (room.mode === 'custom' && room.customConfig?.teams)) {
               p.lives -= 1;
               if (p.lives <= 0) {
                 io.to(roomId).emit('playerEliminated', p.id);
@@ -201,7 +253,7 @@ async function startServer() {
                     room.teams = {};
                     room.votesToStart.clear();
                     for (const pId in room.players) {
-                      room.players[pId].health = 500;
+                      room.players[pId].health = room.mode === 'custom' && room.customConfig ? room.customConfig.health : 500;
                       room.players[pId].lives = 1;
                       room.players[pId].score = 0;
                     }
@@ -219,10 +271,10 @@ async function startServer() {
         }
       }
 
-      if (room.mode === 'pve') {
+      if (room.mode === 'pve' || (room.mode === 'custom' && room.customConfig && room.customConfig.enemyBots > 0)) {
         const numPlayers = Object.keys(room.players).length;
         if (numPlayers > 0) {
-          if (!room.bossActive && !room.bossDefeated) {
+          if (room.mode === 'pve' && !room.bossActive && !room.bossDefeated) {
             const totalScore = Object.values(room.players).reduce((acc: number, p: any) => acc + p.score, 0);
             if (totalScore >= 200) {
               room.bossActive = true;
@@ -279,7 +331,7 @@ async function startServer() {
                 }
               }
             }
-          } else if (room.bossId && room.entities[room.bossId]) {
+          } else if (room.mode === 'pve' && room.bossId && room.entities[room.bossId]) {
             const boss = room.entities[room.bossId];
             const now = Date.now();
             if (room.bossPhase === 1 && boss.health <= boss.maxHealth * 0.66) {
@@ -292,6 +344,32 @@ async function startServer() {
               boss.invulnerableUntil = now + 5000;
               spawnBossMinions(room, roomId, 20);
               io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'BOSS FINAL WAVE!', color: '#ff0000' });
+            }
+          } else if (room.mode === 'custom' && room.customConfig && room.customConfig.enemyBots > 0) {
+            const maxEntities = room.customConfig.enemyBots;
+            if (Object.keys(room.entities).length < maxEntities) {
+              if (Math.random() < 0.5) {
+                const id = Math.random().toString(36).substring(7);
+                const rand = Math.random();
+                const type = rand < 0.33 ? 'LIGHTBULB' : rand < 0.66 ? 'DRONE' : 'MECH';
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 80 + Math.random() * 20;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const terrainY = getTerrainHeight(x, z);
+                const blockY = getHighestBlockY(room.volume, x, z);
+                room.entities[id] = {
+                  id,
+                  type,
+                  x,
+                  y: type === 'MECH' ? Math.max(terrainY, blockY) + 0.4 : Math.max(terrainY, blockY) + 60,
+                  z,
+                  health: type === 'LIGHTBULB' ? 50 : type === 'DRONE' ? 100 : 200,
+                  targetId: null,
+                  lastAttack: 0
+                };
+                io.to(roomId).emit('entitySpawned', room.entities[id]);
+              }
             }
           }
         }
@@ -568,7 +646,7 @@ async function startServer() {
     if (!target || target.infiniteHealth) return;
     
     // Prevent friendly fire in team mode
-    if (room.mode === 'team' && room.teams[targetId] === room.teams[shooterId] && targetId !== shooterId) {
+    if ((room.mode === 'team' || (room.mode === 'custom' && room.customConfig?.teams)) && room.teams[targetId] === room.teams[shooterId] && targetId !== shooterId) {
       return;
     }
     
@@ -581,7 +659,7 @@ async function startServer() {
     io.to(roomId).emit('damageNumber', { id: targetId, amount: finalDamage, isCritical, type: 'player' });
     
     if (target.health <= 0) {
-      if (room.mode === 'team') {
+      if (room.mode === 'team' || (room.mode === 'custom' && room.customConfig?.teams)) {
         target.lives -= 1;
         if (target.lives <= 0) {
           // Player is eliminated
@@ -605,7 +683,7 @@ async function startServer() {
               room.teams = {};
               room.votesToStart.clear();
               for (const pId in room.players) {
-                room.players[pId].health = 500;
+                room.players[pId].health = room.mode === 'custom' && room.customConfig ? room.customConfig.health : 500;
                 room.players[pId].lives = 1;
                 room.players[pId].score = 0;
               }
@@ -680,9 +758,17 @@ async function startServer() {
     console.log('Player connected:', socket.id);
     const nickname = socket.handshake.query.nickname || 'Player';
     const isAdmin = socket.handshake.query.isAdmin === 'true';
-    const mode = (socket.handshake.query.gameMode as 'pvp' | 'pve' | 'team' | 'speed') || 'pvp';
+    const mode = (socket.handshake.query.gameMode as 'pvp' | 'pve' | 'team' | 'speed' | 'custom') || 'pvp';
     const difficulty = (socket.handshake.query.difficulty as 'easy' | 'normal' | 'hard' | 'nightmare') || 'normal';
-    const roomId = mode === 'pve' ? `pve-${difficulty}` : mode === 'team' ? 'team' : mode === 'speed' ? 'speed' : 'pvp';
+    const roomId = mode === 'pve' ? `pve-${difficulty}` : mode === 'team' ? 'team' : mode === 'speed' ? 'speed' : mode === 'custom' ? 'custom' : 'pvp';
+    
+    // If custom room doesn't exist but requested, fallback to pvp
+    if (mode === 'custom' && !rooms['custom']) {
+      socket.emit('chatMessage', { sender: 'SYSTEM', text: 'Custom game not found. Falling back to PvP.', color: '#ff0000' });
+      socket.disconnect();
+      return;
+    }
+
     socket.join(roomId);
     socket.data.roomId = roomId;
     const room = rooms[roomId];
@@ -695,8 +781,16 @@ async function startServer() {
     const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
 
     // Initialize player
-    const isLateJoiner = mode === 'team' && room.state === 'playing';
+    const isLateJoiner = (mode === 'team' || mode === 'custom') && room.state === 'playing';
     
+    let spawnHealth = mode === 'speed' ? 125 : 500;
+    let spawnWeapon = 'DEFAULT';
+    
+    if (mode === 'custom' && room.customConfig) {
+      spawnHealth = room.customConfig.health;
+      spawnWeapon = room.customConfig.spawnWeapon;
+    }
+
     room.players[socket.id] = {
       id: socket.id,
       nickname,
@@ -709,8 +803,8 @@ async function startServer() {
       rz: 0,
       color: ['#00ffff', '#ff00ff', '#ffff00', '#00ff00'][Math.floor(Math.random() * 4)],
       score: 0,
-      health: isLateJoiner ? 0 : (mode === 'speed' ? 125 : 500),
-      weapon: 'DEFAULT',
+      health: isLateJoiner ? 0 : spawnHealth,
+      weapon: spawnWeapon,
       bleedingTicks: 0,
       lastAttacker: null,
       lives: isLateJoiner ? 0 : 1
@@ -730,7 +824,8 @@ async function startServer() {
       teams: room.teams,
       votesToStart: Array.from(room.votesToStart),
       activeEvent: room.activeEvent ? { type: room.activeEvent.type, duration: room.activeEvent.endTime - Date.now(), startTime: room.activeEvent.endTime - 30000, targets: room.activeEvent.targets } : null,
-      eventsEnabled: room.eventsEnabled
+      eventsEnabled: room.eventsEnabled,
+      customConfig: room.customConfig
     });
 
     // Broadcast new player to others
@@ -739,10 +834,11 @@ async function startServer() {
     socket.on('joinTeam', (teamId) => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
-      if (r && r.mode === 'team' && r.state === 'lobby') {
-        // Check if team is full (max 2)
+      if (r && (r.mode === 'team' || (r.mode === 'custom' && r.customConfig?.teams)) && r.state === 'lobby') {
+        // Check if team is full
+        const maxTeamSize = r.mode === 'custom' ? (r.customConfig?.teamSize || 2) : 2;
         const teamCount = Object.values(r.teams).filter(t => t === teamId).length;
-        if (teamCount < 2) {
+        if (teamCount < maxTeamSize) {
           r.teams[socket.id] = teamId;
           if (r.votesToStart.has(socket.id)) {
             r.votesToStart.delete(socket.id);
@@ -756,44 +852,53 @@ async function startServer() {
     socket.on('voteStart', () => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
-      if (r && r.mode === 'team' && r.state === 'lobby') {
+      if (r && (r.mode === 'team' || r.mode === 'custom') && r.state === 'lobby') {
         r.votesToStart.add(socket.id);
         io.to(rId).emit('votesUpdated', Array.from(r.votesToStart));
         
-        // Check if all players have voted and there are at least 2 players
+        // Check if all players have voted and there are at least 2 players (or 1 for custom)
         const numPlayers = Object.keys(r.players).length;
-        if (numPlayers >= 2 && r.votesToStart.size === numPlayers) {
+        const minPlayers = r.mode === 'custom' ? 1 : 2;
+        if (numPlayers >= minPlayers && r.votesToStart.size === numPlayers) {
           r.state = 'playing';
-          // Assign 2 lives to single players
-          const teamCounts: Record<string, number> = {};
-          for (const t of Object.values(r.teams)) {
-            teamCounts[t] = (teamCounts[t] || 0) + 1;
+          // Assign 2 lives to single players in team mode
+          if (r.mode === 'team' || (r.mode === 'custom' && r.customConfig?.teams)) {
+            const teamCounts: Record<string, number> = {};
+            for (const t of Object.values(r.teams)) {
+              teamCounts[t] = (teamCounts[t] || 0) + 1;
+            }
+            for (const pid in r.players) {
+              const tId = r.teams[pid];
+              if (!tId || teamCounts[tId] === 1) {
+                r.players[pid].lives = 2;
+              } else {
+                r.players[pid].lives = 1;
+              }
+            }
+          } else if (r.mode === 'custom') {
+            for (const pid in r.players) {
+              r.players[pid].lives = 1;
+            }
           }
           
           const spread = 2000;
-          for (const pId in r.players) {
-            const tId = r.teams[pId];
-            if (tId && teamCounts[tId] === 1) {
-              r.players[pId].lives = 2;
-            } else {
-              r.players[pId].lives = 1;
-            }
-            
-            // Reset player state
-            r.players[pId].health = 500;
-            r.players[pId].weapon = 'DEFAULT';
-            r.players[pId].bleedingTicks = 0;
-            r.players[pId].score = 0;
-            
-            // Respawn
+          for (const pid in r.players) {
             const spawnX = (Math.random() - 0.5) * spread;
             const spawnZ = (Math.random() - 0.5) * spread;
             const terrainY = getTerrainHeight(spawnX, spawnZ);
             const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
-            r.players[pId].x = spawnX;
-            r.players[pId].y = Math.max(terrainY, blockY) + 20;
-            r.players[pId].z = spawnZ;
+            r.players[pid].x = spawnX;
+            r.players[pid].y = Math.max(terrainY, blockY) + 20;
+            r.players[pid].z = spawnZ;
+            
+            let spawnHealth = 500;
+            if (r.mode === 'custom' && r.customConfig) {
+              spawnHealth = r.customConfig.health;
+            }
+            r.players[pid].health = spawnHealth;
           }
+          
+          io.to(rId).emit('gameStarted', r.players);
           
           // Reset weapons and medkits
           r.weapons = {};
@@ -879,7 +984,7 @@ async function startServer() {
         if (dist < 5) {
           m.active = false;
           m.respawnTime = Date.now() + 45000; // 45 seconds respawn
-          const maxHealth = r.mode === 'speed' ? 125 : 500;
+          const maxHealth = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
           p.health = Math.min(maxHealth, p.health + 250);
           p.bleedingTicks = 0;
           io.to(rId).emit('medkitsUpdate', r.medkits);
@@ -889,15 +994,101 @@ async function startServer() {
       }
     });
 
-    socket.on('adminGiveWeapon', (weaponType) => {
+    socket.on('adminGiveWeapon', (weaponType, targetId) => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
       const p = r.players[socket.id];
       if (!p || !p.isAdmin) return;
-      if (p.health > 0) {
-        p.weapon = weaponType;
-        socket.emit('weaponPickedUp', weaponType);
-        io.to(rId).emit('playerWeaponChanged', { id: p.id, weapon: weaponType });
+      
+      const target = targetId ? r.players[targetId] : p;
+      if (target && target.health > 0) {
+        target.weapon = weaponType;
+        io.to(target.id).emit('weaponPickedUp', weaponType);
+        io.to(rId).emit('playerWeaponChanged', { id: target.id, weapon: weaponType });
+      }
+    });
+
+    socket.on('adminSpawnBot', (type, targetId, health) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+
+      const spawnBotForTarget = (tId: string) => {
+        const targetPlayer = r.players[tId];
+        if (!targetPlayer) return;
+
+        const id = Math.random().toString(36).substring(7);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 40 + Math.random() * 20;
+        const x = targetPlayer.x + Math.cos(angle) * dist;
+        const z = targetPlayer.z + Math.sin(angle) * dist;
+        const terrainY = getTerrainHeight(x, z);
+        const blockY = getHighestBlockY(r.volume, x, z);
+        
+        r.entities[id] = {
+          id,
+          type,
+          x,
+          y: type === 'MECH' ? Math.max(terrainY, blockY) + 0.4 : Math.max(terrainY, blockY) + 40,
+          z,
+          health: health || (type === 'LIGHTBULB' ? 50 : type === 'DRONE' ? 100 : type === 'BOSS' ? 10000 : 200),
+          maxHealth: type === 'BOSS' ? (health || 10000) : undefined,
+          targetId: tId,
+          lastAttack: 0,
+          isPreparingAttack: false,
+          attackStartTime: 0,
+          invulnerableUntil: 0,
+          attackType: type === 'BOSS' ? 'SPREAD' : undefined
+        };
+        io.to(rId).emit('entitySpawned', r.entities[id]);
+        if (type === 'BOSS') {
+          io.to(rId).emit('bossSpawned', r.entities[id]);
+          io.to(rId).emit('chatMessage', { sender: 'SYSTEM', text: 'WARNING: ADMIN SPAWNED BOSS!', color: '#ff0000' });
+        }
+      };
+
+      if (targetId === 'all') {
+        for (const tId in r.players) {
+          spawnBotForTarget(tId);
+        }
+      } else {
+        spawnBotForTarget(targetId || socket.id);
+      }
+    });
+
+    socket.on('adminTeleportPlayer', (targetId, destinationId) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      const target = r.players[targetId];
+      const dest = r.players[destinationId];
+      if (target && dest) {
+        io.to(target.id).emit('adminTeleport', { x: dest.x, y: dest.y, z: dest.z });
+      }
+    });
+
+    socket.on('adminSetSpeed', (targetId, speed) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      io.to(targetId).emit('adminSetSpeed', speed);
+    });
+
+    socket.on('adminSetHealth', (targetId, health) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      const target = r.players[targetId];
+      if (target) {
+        target.health = health;
+        io.to(rId).emit('playerHit', { id: target.id, health: target.health, bleedingTicks: target.bleedingTicks || 0 });
       }
     });
 
@@ -919,7 +1110,7 @@ async function startServer() {
           const target = r.players[targetId];
           const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
           if (dist < 30) {
-            const maxHealth = r.mode === 'speed' ? 125 : 500;
+            const maxHealth = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
             const damage = Math.floor((maxHealth / 2) * (1 - dist/30));
             applyDamage(rId, targetId, shooterId, damage);
           }
@@ -930,6 +1121,37 @@ async function startServer() {
           if (dist < 30) {
             const damage = Math.floor(250 * (1 - dist/30));
             applyDamageToEntity(rId, targetId, shooterId, damage);
+          }
+        }
+        for (const targetId in r.structures) {
+          const target = r.structures[targetId];
+          const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
+          if (dist < 30) {
+            destroyStructureAndConnected(rId, targetId);
+          }
+        }
+      } else if (weapon === 'MELEE') {
+        // Melee attack logic
+        const damage = 150; // High damage for melee
+        
+        // Broadcast melee animation to everyone
+        io.to(rId).emit('meleeAnimation', { id: shooterId });
+
+        for (const targetId in r.players) {
+          if (targetId === shooterId) continue;
+          if (checkHit(r.players[targetId], data.from, data.to)) {
+            applyDamage(rId, targetId, shooterId, damage);
+            r.players[targetId].bleedingTicks = 10; // Heavy bleeding
+          }
+        }
+        for (const targetId in r.entities) {
+          if (checkHit(r.entities[targetId], data.from, data.to)) {
+            applyDamageToEntity(rId, targetId, shooterId, damage);
+          }
+        }
+        for (const targetId in r.structures) {
+          if (checkStructureHit(r.structures[targetId], data.from, data.to)) {
+            destroyStructureAndConnected(rId, targetId);
           }
         }
       } else if (weapon === 'SHOTGUN') {
@@ -944,6 +1166,11 @@ async function startServer() {
           for (const targetId in r.entities) {
             if (checkHit(r.entities[targetId], ray.from, ray.to)) {
               applyDamageToEntity(rId, targetId, shooterId, 15);
+            }
+          }
+          for (const targetId in r.structures) {
+            if (checkStructureHit(r.structures[targetId], ray.from, ray.to)) {
+              destroyStructureAndConnected(rId, targetId);
             }
           }
         });
@@ -969,7 +1196,34 @@ async function startServer() {
             applyDamageToEntity(rId, targetId, shooterId, damage);
           }
         }
+        for (const targetId in r.structures) {
+          if (checkStructureHit(r.structures[targetId], data.from, data.to)) {
+            destroyStructureAndConnected(rId, targetId);
+          }
+        }
       }
+    });
+
+    socket.on('buildRamp', (data) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      if (!r || r.state !== 'playing') return;
+      const shooterId = socket.id;
+      const shooter = r.players[shooterId];
+      if (!shooter || shooter.health <= 0) return;
+
+      const id = Math.random().toString(36).substring(7);
+      const structure = {
+        id,
+        type: 'RAMP',
+        x: data.x,
+        y: data.y,
+        z: data.z,
+        ry: data.ry,
+        ownerId: shooterId
+      };
+      r.structures[id] = structure;
+      io.to(rId).emit('structureSpawned', structure);
     });
 
     socket.on('takeEnvironmentalDamage', (amount) => {
@@ -986,7 +1240,7 @@ async function startServer() {
       if (rId && rooms[rId]) {
         const r = rooms[rId];
         delete r.players[socket.id];
-        if (r.mode === 'team') {
+        if (r.mode === 'team' || (r.mode === 'custom' && r.customConfig?.teams)) {
           delete r.teams[socket.id];
           r.votesToStart.delete(socket.id);
           io.to(rId).emit('teamsUpdated', r.teams);
@@ -998,7 +1252,7 @@ async function startServer() {
             r.state = 'lobby';
             r.teams = {};
             r.votesToStart.clear();
-          } else if (r.state === 'lobby' && numPlayers >= 2 && r.votesToStart.size === numPlayers) {
+          } else if (r.state === 'lobby' && numPlayers >= (r.mode === 'custom' ? 1 : 2) && r.votesToStart.size === numPlayers) {
             r.state = 'playing';
             const teamCounts: Record<string, number> = {};
             for (const t of Object.values(r.teams)) {
@@ -1006,7 +1260,7 @@ async function startServer() {
             }
             for (const pId in r.players) {
               const tId = r.teams[pId];
-              if (tId && teamCounts[tId] === 1) {
+              if (!tId || teamCounts[tId] === 1) {
                 r.players[pId].lives = 2;
               } else {
                 r.players[pId].lives = 1;
@@ -1029,7 +1283,7 @@ async function startServer() {
                 r.teams = {};
                 r.votesToStart.clear();
                 for (const pId in r.players) {
-                  r.players[pId].health = r.mode === 'speed' ? 125 : 500;
+                  r.players[pId].health = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
                   r.players[pId].lives = 1;
                   r.players[pId].score = 0;
                 }
@@ -1050,11 +1304,11 @@ async function startServer() {
       if (!r) return;
       const p = r.players[socket.id];
       if (p && p.health <= 0) {
-        if (r.mode === 'team' && p.lives <= 0) return; // Can't respawn if eliminated
+        if ((r.mode === 'team' || (r.mode === 'custom' && r.customConfig?.teams)) && p.lives <= 0) return; // Can't respawn if eliminated
         
-        p.health = r.mode === 'speed' ? 125 : 500;
+        p.health = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
         p.bleedingTicks = 0;
-        p.weapon = 'DEFAULT';
+        p.weapon = r.mode === 'custom' && r.customConfig ? r.customConfig.spawnWeapon : 'DEFAULT';
         const spread = r.mode === 'pve' ? 100 : 2000;
         const spawnX = (Math.random() - 0.5) * spread;
         const spawnZ = (Math.random() - 0.5) * spread;
@@ -1108,8 +1362,27 @@ async function startServer() {
   });
 
   // API routes FIRST
+  app.use(express.json());
+
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
+  });
+
+  app.get('/api/custom-game', (req, res) => {
+    if (rooms['custom']) {
+      res.json({ active: true, config: rooms['custom'].customConfig });
+    } else {
+      res.json({ active: false });
+    }
+  });
+
+  app.post('/api/custom-game', (req, res) => {
+    const { isAdmin, config } = req.body;
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+    rooms['custom'] = createRoom('custom', 'normal', config);
+    res.json({ success: true });
   });
 
   const dev = process.env.NODE_ENV !== 'production';

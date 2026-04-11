@@ -18,11 +18,15 @@ export function TeamLobby() {
   const votesToStart = useGameStore((state) => state.votesToStart);
   const joinTeam = useGameStore((state) => state.joinTeam);
   const voteStart = useGameStore((state) => state.voteStart);
+  const gameMode = useGameStore((state) => state.gameMode);
+  const customConfig = useGameStore((state) => state.customConfig);
 
   const myTeam = myId ? teams[myId] : null;
   const hasVoted = myId ? votesToStart.includes(myId) : false;
   const totalPlayers = Object.keys(players).length;
   const totalVotes = votesToStart.length;
+  
+  const maxTeamSize = gameMode === 'custom' && customConfig ? customConfig.teamSize : 2;
 
   return (
     <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4">
@@ -33,70 +37,74 @@ export function TeamLobby() {
       >
         <div className="text-center mb-8">
           <h1 className="text-4xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-500 uppercase">
-            Team Selection
+            {gameMode === 'custom' && !customConfig?.teams ? 'Waiting for Players' : 'Team Selection'}
           </h1>
-          <p className="text-gray-400 mt-2">Select your duo. Single players receive 2 lives.</p>
+          <p className="text-gray-400 mt-2">
+            {gameMode === 'custom' && !customConfig?.teams ? 'Ready up to start the custom game.' : `Select your team. Max ${maxTeamSize} players per team.`}
+          </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {TEAMS.map((team) => {
-            const teamPlayers = Object.entries(teams)
-              .filter(([_, tId]) => tId === team.id)
-              .map(([pId]) => players[pId]);
-            
-            const isFull = teamPlayers.length >= 2;
-            const isMyTeam = myTeam === team.id;
+        {(!customConfig || customConfig.teams) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            {TEAMS.map((team) => {
+              const teamPlayers = Object.entries(teams)
+                .filter(([_, tId]) => tId === team.id)
+                .map(([pId]) => players[pId]);
+              
+              const isFull = teamPlayers.length >= maxTeamSize;
+              const isMyTeam = myTeam === team.id;
 
-            return (
-              <div 
-                key={team.id}
-                className={`border rounded-xl p-4 flex flex-col ${team.color} ${isMyTeam ? 'ring-2 ring-white' : ''} ${!isFull && !isMyTeam ? 'cursor-pointer hover:bg-white/5' : ''}`}
-                onClick={() => {
-                  if (!isFull && !isMyTeam) {
-                    playSound('click');
-                    joinTeam(team.id);
-                  }
-                }}
-                onMouseEnter={() => !isFull && !isMyTeam && playSound('hover')}
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold uppercase tracking-wider">{team.name}</h3>
-                  <Users className="w-5 h-5" />
-                </div>
-                
-                <div className="flex-grow space-y-2">
-                  {teamPlayers.map((p, i) => (
-                    <div key={i} className="bg-black/40 px-3 py-2 rounded-lg text-sm truncate">
-                      {p?.nickname || 'Unknown'}
-                    </div>
-                  ))}
-                  {Array.from({ length: 2 - teamPlayers.length }).map((_, i) => (
-                    <div key={`empty-${i}`} className="bg-black/20 px-3 py-2 rounded-lg text-sm text-white/30 border border-dashed border-white/20">
-                      Empty Slot
-                    </div>
-                  ))}
-                </div>
-                
-                {isMyTeam && (
-                  <div className="mt-4 text-xs text-center font-bold bg-white/10 py-1 rounded">
-                    YOUR TEAM
+              return (
+                <div 
+                  key={team.id}
+                  className={`border rounded-xl p-4 flex flex-col ${team.color} ${isMyTeam ? 'ring-2 ring-white' : ''} ${!isFull && !isMyTeam ? 'cursor-pointer hover:bg-white/5' : ''}`}
+                  onClick={() => {
+                    if (!isFull && !isMyTeam) {
+                      playSound('click');
+                      joinTeam(team.id);
+                    }
+                  }}
+                  onMouseEnter={() => !isFull && !isMyTeam && playSound('hover')}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold uppercase tracking-wider">{team.name}</h3>
+                    <Users className="w-5 h-5" />
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  
+                  <div className="flex-grow space-y-2">
+                    {teamPlayers.map((p, i) => (
+                      <div key={i} className="bg-black/40 px-3 py-2 rounded-lg text-sm truncate">
+                        {p?.nickname || 'Unknown'}
+                      </div>
+                    ))}
+                    {Array.from({ length: Math.max(0, maxTeamSize - teamPlayers.length) }).map((_, i) => (
+                      <div key={`empty-${i}`} className="bg-black/20 px-3 py-2 rounded-lg text-sm text-white/30 border border-dashed border-white/20">
+                        Empty Slot
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {isMyTeam && (
+                    <div className="mt-4 text-xs text-center font-bold bg-white/10 py-1 rounded">
+                      YOUR TEAM
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex flex-col items-center gap-4 border-t border-white/10 pt-8">
           <button
             onClick={() => {
-              if (!hasVoted && myTeam) {
+              if (!hasVoted && (myTeam || (gameMode === 'custom' && !customConfig?.teams))) {
                 playSound('click');
                 voteStart();
               }
             }}
-            onMouseEnter={() => !hasVoted && myTeam && playSound('hover')}
-            disabled={hasVoted || !myTeam}
+            onMouseEnter={() => !hasVoted && (myTeam || (gameMode === 'custom' && !customConfig?.teams)) && playSound('hover')}
+            disabled={hasVoted || (!myTeam && !(gameMode === 'custom' && !customConfig?.teams))}
             className={`px-8 py-4 rounded-xl font-bold uppercase tracking-widest flex items-center gap-3 transition-all ${
               hasVoted 
                 ? 'bg-green-500/20 text-green-400 border border-green-500/50 cursor-not-allowed'

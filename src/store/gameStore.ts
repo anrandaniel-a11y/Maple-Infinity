@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { playSound } from '../utils/audio';
+import * as THREE from 'three';
 
 interface PlayerState {
   id: string;
@@ -62,10 +63,46 @@ interface DamageNumber {
   createdAt: number;
 }
 
+export interface Structure {
+  id: string;
+  type: 'RAMP';
+  x: number;
+  y: number;
+  z: number;
+  ry: number;
+  ownerId: string;
+}
+
+export interface ControlElementConfig {
+  x: number;
+  y: number;
+  size: number;
+  opacity: number;
+}
+
+export interface MobileControlsConfig {
+  joystick: ControlElementConfig;
+  shoot: ControlElementConfig;
+  jump: ControlElementConfig;
+  dash: ControlElementConfig;
+  melee: ControlElementConfig;
+  build: ControlElementConfig;
+}
+
+export const defaultMobileControls: MobileControlsConfig = {
+  joystick: { x: 15, y: 75, size: 1, opacity: 1 },
+  shoot: { x: 90, y: 85, size: 1, opacity: 1 },
+  dash: { x: 80, y: 87, size: 1, opacity: 1 },
+  jump: { x: 70, y: 87, size: 1, opacity: 1 },
+  build: { x: 60, y: 87, size: 1, opacity: 1 },
+  melee: { x: 50, y: 87, size: 1, opacity: 1 },
+};
+
 interface GameStore {
   socket: Socket | null;
   players: Record<string, PlayerState>;
   entities: Record<string, EntityState>;
+  structures: Record<string, Structure>;
   lasers: LaserState[];
   shockwaves: ShockwaveState[];
   damageNumbers: DamageNumber[];
@@ -79,16 +116,30 @@ interface GameStore {
   showFps: boolean;
   fpsLimit: number;
   enableLighting: boolean;
-  shadowQuality: 'low' | 'medium' | 'high' | 'ultra';
+  shadowQuality: 'low' | 'medium' | 'high';
+  ultraVisuals: boolean;
   mapIndex: number;
   seed: number;
-  gameMode: 'pvp' | 'pve' | 'team' | 'speed';
+  envMap: THREE.Texture | null;
+  gameMode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom';
   difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
   gameState: 'lobby' | 'playing';
   teams: Record<string, string>;
   votesToStart: string[];
   activeEvent: SpecialEvent | null;
   eventsEnabled: boolean;
+  mobileControls: MobileControlsConfig;
+  setMobileControls: (controls: MobileControlsConfig) => void;
+  isCustomizingControls: boolean;
+  setIsCustomizingControls: (val: boolean) => void;
+  customConfig?: {
+    teams: boolean;
+    teamSize: number;
+    enemyBots: number;
+    health: number;
+    speed: number;
+    spawnWeapon: string;
+  };
   adminState: {
     infiniteHealth: boolean;
     flying: boolean;
@@ -96,7 +147,7 @@ interface GameStore {
     speed: number;
   };
   interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null;
-  connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
+  connect: (nickname: string, isAdmin: boolean, gameMode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
   disconnect: () => void;
   setSensitivity: (val: number) => void;
   setRenderDistance: (val: number) => void;
@@ -104,7 +155,9 @@ interface GameStore {
   setShowFps: (val: boolean) => void;
   setFpsLimit: (val: number) => void;
   setEnableLighting: (val: boolean) => void;
-  setShadowQuality: (val: 'low' | 'medium' | 'high' | 'ultra') => void;
+  setShadowQuality: (val: 'low' | 'medium' | 'high') => void;
+  setUltraVisuals: (val: boolean) => void;
+  setEnvMap: (envMap: THREE.Texture | null) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   victory: boolean;
   banned: boolean;
@@ -127,6 +180,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   socket: null,
   players: {},
   entities: {},
+  structures: {},
   lasers: [],
   shockwaves: [],
   damageNumbers: [],
@@ -141,8 +195,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   fpsLimit: 0,
   enableLighting: false,
   shadowQuality: 'medium',
+  ultraVisuals: false,
   mapIndex: 0,
   seed: 0,
+  envMap: null,
   gameMode: 'pvp',
   difficulty: 'normal',
   gameState: 'playing',
@@ -150,6 +206,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   votesToStart: [],
   activeEvent: null,
   eventsEnabled: true,
+  mobileControls: (() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('mobileControls');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return defaultMobileControls;
+  })(),
+  setMobileControls: (controls) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mobileControls', JSON.stringify(controls));
+    }
+    set({ mobileControls: controls });
+  },
+  isCustomizingControls: false,
+  setIsCustomizingControls: (val) => set({ isCustomizingControls: val }),
   victory: false,
   banned: false,
   interactable: null,
@@ -167,6 +240,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setFpsLimit: (val) => set({ fpsLimit: val }),
   setEnableLighting: (val) => set({ enableLighting: val }),
   setShadowQuality: (val) => set({ shadowQuality: val }),
+  setUltraVisuals: (val) => set({ ultraVisuals: val }),
+  setEnvMap: (val) => set({ envMap: val }),
 
   boss: null,
   setBoss: (boss) => set({ boss }),
@@ -201,12 +276,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Connect to the same host/port
     const socket = io({ query: { nickname, isAdmin, gameMode, difficulty } });
 
-    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, seed, boss, state, teams, votesToStart, activeEvent, eventsEnabled }) => {
+    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, structures = {}, seed, boss, state, teams, votesToStart, activeEvent, eventsEnabled, customConfig }) => {
       set({ 
         players, 
         weapons, 
         medkits, 
         entities, 
+        structures,
         myId: id, 
         mapIndex, 
         seed, 
@@ -215,7 +291,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
         teams: teams || {},
         votesToStart: votesToStart || [],
         activeEvent: activeEvent || null,
-        eventsEnabled: eventsEnabled !== undefined ? eventsEnabled : true
+        eventsEnabled: eventsEnabled !== undefined ? eventsEnabled : true,
+        customConfig
       });
     });
 
@@ -318,6 +395,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       });
     });
 
+    socket.on('structuresUpdate', (structures) => {
+      set({ structures });
+    });
+
+    socket.on('structureSpawned', (structure) => {
+      set((state) => ({
+        structures: { ...state.structures, [structure.id]: structure }
+      }));
+    });
+
+    socket.on('structureDestroyed', (id) => {
+      set((state) => {
+        const newStructures = { ...state.structures };
+        delete newStructures[id];
+        return { structures: newStructures };
+      });
+    });
+
     socket.on('weaponsUpdate', (weapons) => {
       set({ weapons });
     });
@@ -354,6 +449,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const id = Math.random().toString(36).substring(7);
       get().addExplosion({ ...exp, id });
       playSound('explosion');
+      
+      // Calculate distance to player for camera shake
+      const state = get();
+      const me = state.myId ? state.players[state.myId] : null;
+      if (me) {
+        const dx = me.x - exp.x;
+        const dy = me.y - exp.y;
+        const dz = me.z - exp.z;
+        const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (dist < 60) {
+          const intensity = Math.max(0, (60 - dist) / 60) * 1.5;
+          window.dispatchEvent(new CustomEvent('cameraShake', { detail: { intensity } }));
+        }
+      }
+
       setTimeout(() => {
         get().removeExplosion(id);
       }, 500); // Explosion lasts 500ms
@@ -414,6 +524,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socket.on('playerHit', ({ id, health, bleedingTicks }) => {
       if (id === get().myId) {
         playSound('hit');
+        window.dispatchEvent(new CustomEvent('cameraShake', { detail: { intensity: 0.8 } }));
       }
       set((state) => {
         if (!state.players[id]) return state;
@@ -459,6 +570,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     socket.on('banned', () => {
       set({ banned: true });
+    });
+
+    socket.on('meleeAnimation', ({ id }) => {
+      window.dispatchEvent(new CustomEvent('remoteMelee', { detail: { id } }));
+    });
+
+    socket.on('adminTeleport', (pos) => {
+      window.dispatchEvent(new CustomEvent('adminTeleport', { detail: pos }));
+    });
+
+    socket.on('adminSetSpeed', (speed) => {
+      set((s) => ({ adminState: { ...s.adminState, speed } }));
     });
 
     socket.on('scoreUpdated', ({ id, score }) => {

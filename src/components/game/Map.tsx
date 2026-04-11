@@ -2,7 +2,6 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, CuboidCollider, InstancedRigidBodies } from '@react-three/rapier';
-import { MeshReflectorMaterial } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { WeaponModel } from './WeaponModel';
 import { generateVolume, getTerrainHeight, VOXEL_SIZE, GRID_W, GRID_H, GRID_D } from '../../utils/mapGen';
@@ -50,6 +49,50 @@ export function Map() {
       <Weapons />
       <Medkits />
       <Explosions />
+      <Structures />
+    </group>
+  );
+}
+
+const rampGeo = new THREE.BoxGeometry(20, 0.2, Math.sqrt(20*20 + 20*20));
+const rampMatBasic = new THREE.MeshBasicMaterial({ color: '#000000' });
+const rampMatStd = new THREE.MeshStandardMaterial({ color: '#000000', roughness: 0.8 });
+const rampWireframeMat = new THREE.MeshBasicMaterial({ color: '#00ffff', wireframe: true, transparent: true, opacity: 0.6 });
+
+function Structures() {
+  const structures = useGameStore((state) => state.structures);
+  const enableLighting = useGameStore((state) => state.enableLighting);
+  const ultraVisuals = useGameStore((state) => state.ultraVisuals);
+  const envMap = useGameStore((state) => state.envMap);
+
+  const rampMat = useMemo(() => {
+    if (!enableLighting) return rampMatBasic;
+    if (ultraVisuals) {
+      return new THREE.MeshStandardMaterial({ 
+        color: '#000000', 
+        roughness: 0.1, 
+        metalness: 0.9, 
+        envMap: envMap,
+        envMapIntensity: 1.5
+      });
+    }
+    return rampMatStd;
+  }, [enableLighting, ultraVisuals, envMap]);
+
+  return (
+    <group>
+      {Object.values(structures).map((s) => {
+        if (s.type === 'RAMP') {
+          return (
+            <RigidBody key={s.id} type="fixed" position={[s.x, s.y, s.z]} rotation={[0, s.ry, 0]}>
+              <mesh geometry={rampGeo} material={rampMat} rotation={[Math.PI / 4, 0, 0]} castShadow={enableLighting} receiveShadow={enableLighting}>
+                <mesh geometry={rampGeo} material={rampWireframeMat} scale={[1.01, 1.01, 1.01]} />
+              </mesh>
+            </RigidBody>
+          );
+        }
+        return null;
+      })}
     </group>
   );
 }
@@ -212,7 +255,6 @@ const GLOBAL_TERRAIN_GEOMETRY = generateTerrainGeometry();
 function Terrain() {
   const geometry = GLOBAL_TERRAIN_GEOMETRY;
   const enableLighting = useGameStore((state) => state.enableLighting);
-  const shadowQuality = useGameStore((state) => state.shadowQuality);
 
   return (
     <group>
@@ -225,24 +267,121 @@ function Terrain() {
           <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.6} />
         </mesh>
       </RigidBody>
-      
-      {/* Reflective water/glass plane for ultra settings */}
-      {enableLighting && shadowQuality === 'ultra' && (
-        <mesh position={[0, 0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[2000, 2000]} />
-          <MeshReflectorMaterial
-            resolution={1024}
-            mixStrength={10}
-            roughness={0.1}
-            color="#152535"
-            metalness={0.8}
-            mirror={1}
-          />
-        </mesh>
-      )}
     </group>
   );
 }
+
+const generateFaceCulledGeometry = (volume: Int32Array, cx: number, cz: number, numChunks: number) => {
+  const chunkSizeVoxels = Math.floor(GRID_W / numChunks);
+  const startX = cx * chunkSizeVoxels;
+  const endX = (cx === numChunks - 1) ? GRID_W : startX + chunkSizeVoxels;
+  const startZ = cz * chunkSizeVoxels;
+  const endZ = (cz === numChunks - 1) ? GRID_D : startZ + chunkSizeVoxels;
+  
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  
+  const wirePositions: number[] = [];
+  const wireIndices: number[] = [];
+  
+  const getIdx = (x: number, y: number, z: number) => x + y * GRID_W + z * GRID_W * GRID_H;
+  
+  const palette = ['#000000', '#00ffff', '#ff00ff', '#ffff00', '#00ff00'];
+  const colorObj = new THREE.Color();
+  
+  let vertexOffset = 0;
+  let wireVertexOffset = 0;
+  
+  const addFace = (x: number, y: number, z: number, dir: number, colorIdx: number) => {
+    colorObj.set(palette[colorIdx]);
+    const r = colorObj.r, g = colorObj.g, b = colorObj.b;
+    
+    const px = (x - GRID_W / 2 + 0.5) * VOXEL_SIZE;
+    const py = (y + 0.5) * VOXEL_SIZE;
+    const pz = (z - GRID_D / 2 + 0.5) * VOXEL_SIZE;
+    const hs = VOXEL_SIZE / 2;
+    const whs = hs + 0.05; // wireframe half size
+    
+    let v0, v1, v2, v3;
+    let wv0, wv1, wv2, wv3;
+    let norm;
+    
+    if (dir === 0) { // +x
+      v0 = [px + hs, py - hs, pz + hs]; v1 = [px + hs, py - hs, pz - hs]; v2 = [px + hs, py + hs, pz - hs]; v3 = [px + hs, py + hs, pz + hs];
+      wv0 = [px + whs, py - whs, pz + whs]; wv1 = [px + whs, py - whs, pz - whs]; wv2 = [px + whs, py + whs, pz - whs]; wv3 = [px + whs, py + whs, pz + whs];
+      norm = [1, 0, 0];
+    } else if (dir === 1) { // -x
+      v0 = [px - hs, py - hs, pz - hs]; v1 = [px - hs, py - hs, pz + hs]; v2 = [px - hs, py + hs, pz + hs]; v3 = [px - hs, py + hs, pz - hs];
+      wv0 = [px - whs, py - whs, pz - whs]; wv1 = [px - whs, py - whs, pz + whs]; wv2 = [px - whs, py + whs, pz + whs]; wv3 = [px - whs, py + whs, pz - whs];
+      norm = [-1, 0, 0];
+    } else if (dir === 2) { // +y
+      v0 = [px - hs, py + hs, pz + hs]; v1 = [px + hs, py + hs, pz + hs]; v2 = [px + hs, py + hs, pz - hs]; v3 = [px - hs, py + hs, pz - hs];
+      wv0 = [px - whs, py + whs, pz + whs]; wv1 = [px + whs, py + whs, pz + whs]; wv2 = [px + whs, py + whs, pz - whs]; wv3 = [px - whs, py + whs, pz - whs];
+      norm = [0, 1, 0];
+    } else if (dir === 3) { // -y
+      v0 = [px - hs, py - hs, pz - hs]; v1 = [px + hs, py - hs, pz - hs]; v2 = [px + hs, py - hs, pz + hs]; v3 = [px - hs, py - hs, pz + hs];
+      wv0 = [px - whs, py - whs, pz - whs]; wv1 = [px + whs, py - whs, pz - whs]; wv2 = [px + whs, py - whs, pz + whs]; wv3 = [px - whs, py - whs, pz + whs];
+      norm = [0, -1, 0];
+    } else if (dir === 4) { // +z
+      v0 = [px - hs, py - hs, pz + hs]; v1 = [px + hs, py - hs, pz + hs]; v2 = [px + hs, py + hs, pz + hs]; v3 = [px - hs, py + hs, pz + hs];
+      wv0 = [px - whs, py - whs, pz + whs]; wv1 = [px + whs, py - whs, pz + whs]; wv2 = [px + whs, py + whs, pz + whs]; wv3 = [px - whs, py + whs, pz + whs];
+      norm = [0, 0, 1];
+    } else { // -z
+      v0 = [px + hs, py - hs, pz - hs]; v1 = [px - hs, py - hs, pz - hs]; v2 = [px - hs, py + hs, pz - hs]; v3 = [px + hs, py + hs, pz - hs];
+      wv0 = [px + whs, py - whs, pz - whs]; wv1 = [px - whs, py - whs, pz - whs]; wv2 = [px - whs, py + whs, pz - whs]; wv3 = [px + whs, py + whs, pz - whs];
+      norm = [0, 0, -1];
+    }
+    
+    positions.push(...v0, ...v1, ...v2, ...v3);
+    normals.push(...norm, ...norm, ...norm, ...norm);
+    colors.push(r, g, b, r, g, b, r, g, b, r, g, b);
+    indices.push(vertexOffset, vertexOffset + 1, vertexOffset + 2, vertexOffset, vertexOffset + 2, vertexOffset + 3);
+    vertexOffset += 4;
+    
+    wirePositions.push(...wv0, ...wv1, ...wv2, ...wv3);
+    wireIndices.push(wireVertexOffset, wireVertexOffset + 1, wireVertexOffset + 2, wireVertexOffset, wireVertexOffset + 2, wireVertexOffset + 3);
+    wireVertexOffset += 4;
+  };
+  
+  for (let z = startZ; z < endZ; z++) {
+    for (let y = 0; y < GRID_H; y++) {
+      for (let x = startX; x < endX; x++) {
+        const colorIdx = volume[getIdx(x, y, z)];
+        if (colorIdx === 0) continue;
+        
+        if (x === GRID_W - 1 || volume[getIdx(x + 1, y, z)] === 0) addFace(x, y, z, 0, colorIdx);
+        if (x === 0 || volume[getIdx(x - 1, y, z)] === 0) addFace(x, y, z, 1, colorIdx);
+        if (y === GRID_H - 1 || volume[getIdx(x, y + 1, z)] === 0) addFace(x, y, z, 2, colorIdx);
+        if (y === 0 || volume[getIdx(x, y - 1, z)] === 0) addFace(x, y, z, 3, colorIdx);
+        if (z === GRID_D - 1 || volume[getIdx(x, y, z + 1)] === 0) addFace(x, y, z, 4, colorIdx);
+        if (z === 0 || volume[getIdx(x, y, z - 1)] === 0) addFace(x, y, z, 5, colorIdx);
+      }
+    }
+  }
+  
+  const geo = new THREE.BufferGeometry();
+  if (positions.length > 0) {
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
+  }
+  
+  const wireGeo = new THREE.BufferGeometry();
+  if (wirePositions.length > 0) {
+    wireGeo.setAttribute('position', new THREE.Float32BufferAttribute(wirePositions, 3));
+    wireGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    wireGeo.setIndex(wireIndices);
+    wireGeo.computeBoundingSphere();
+    wireGeo.computeBoundingBox();
+  }
+  
+  return { geometry: geo, wireframeGeometry: wireGeo };
+};
 
 const generateChunks = (seed: number) => {
   const volume = generateVolume(seed);
@@ -322,6 +461,8 @@ const generateChunks = (seed: number) => {
     const centerX = (cx + 0.5) * chunkSize - 1000;
     const centerZ = (cz + 0.5) * chunkSize - 1000;
     return {
+      cx,
+      cz,
       positions: [] as [number, number, number][],
       scales: [] as [number, number, number][],
       colors: [] as number[],
@@ -371,7 +512,13 @@ const generateChunks = (seed: number) => {
       colors[i * 3 + 2] = data.colors[i * 3 + 2];
     }
     
-    return { ...data, matrices, wireframeMatrices, colorsArray: colors };
+    return { 
+      ...data, 
+      matrices, 
+      wireframeMatrices, 
+      colorsArray: colors,
+      ...generateFaceCulledGeometry(volume, data.cx, data.cz, numChunks)
+    };
   });
 
   return finalChunkData;
@@ -394,8 +541,11 @@ function ObstacleChunk({ data }: { data: any }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const wireframeRef = useRef<THREE.InstancedMesh>(null);
   const groupRef = useRef<THREE.Group>(null);
+  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   const renderDistance = useGameStore((state) => state.renderDistance);
   const enableLighting = useGameStore((state) => state.enableLighting);
+  const ultraVisuals = useGameStore((state) => state.ultraVisuals);
+  const envMap = useGameStore((state) => state.envMap);
   
   const { matrices, wireframeMatrices, colorsArray, center } = data;
   const box = useMemo(() => {
@@ -406,6 +556,8 @@ function ObstacleChunk({ data }: { data: any }) {
 
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const projScreenMatrix = useMemo(() => new THREE.Matrix4(), []);
+
+  const [isClose, setIsClose] = useState(false);
 
   useFrame(({ camera }) => {
     if (groupRef.current) {
@@ -419,8 +571,30 @@ function ObstacleChunk({ data }: { data: any }) {
       frustum.setFromProjectionMatrix(projScreenMatrix);
       
       groupRef.current.visible = frustum.intersectsBox(box);
+
+      const close = dist < 250;
+      if (isClose !== close) {
+        setIsClose(close);
+      }
     }
   });
+
+  useEffect(() => {
+    if (materialRef.current && enableLighting) {
+      if (isClose && ultraVisuals) {
+        materialRef.current.roughness = 0.05;
+        materialRef.current.metalness = 0.95;
+        materialRef.current.envMap = envMap;
+        materialRef.current.envMapIntensity = 1.5;
+      } else {
+        materialRef.current.roughness = isClose ? 0.2 : 0.7;
+        materialRef.current.metalness = isClose ? 0.8 : 0.1;
+        materialRef.current.envMap = null;
+        materialRef.current.envMapIntensity = 1.0;
+      }
+      materialRef.current.needsUpdate = true;
+    }
+  }, [isClose, envMap, enableLighting, ultraVisuals]);
 
   useEffect(() => {
     if (meshRef.current) {
@@ -448,7 +622,7 @@ function ObstacleChunk({ data }: { data: any }) {
         <instancedBufferAttribute attach="instanceMatrix" args={[matrices, 16]} />
         <instancedBufferAttribute attach="instanceColor" args={[colorsArray, 3]} />
         <boxGeometry />
-        {enableLighting ? <meshStandardMaterial color="#333" roughness={0.7} metalness={0.1} /> : <meshBasicMaterial color="#111" />}
+        {enableLighting ? <meshStandardMaterial ref={materialRef} color="#333" roughness={0.7} metalness={0.1} /> : <meshBasicMaterial color="#111" />}
       </instancedMesh>
       <instancedMesh ref={wireframeRef} args={[undefined, undefined, data.positions.length]} frustumCulled={true}>
         <instancedBufferAttribute attach="instanceMatrix" args={[wireframeMatrices, 16]} />
