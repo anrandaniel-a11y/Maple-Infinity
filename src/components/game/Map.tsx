@@ -501,6 +501,14 @@ function ObstacleChunk({ data }: { data: any }) {
   const { center } = data;
   const chunkCenter = useMemo(() => new THREE.Vector3(center[0], 0, center[2]), [center]);
 
+  const frustum = useMemo(() => new THREE.Frustum(), []);
+  const projScreenMatrix = useMemo(() => new THREE.Matrix4(), []);
+  const boundingBox = useMemo(() => {
+    const box = new THREE.Box3();
+    box.setFromCenterAndSize(chunkCenter, new THREE.Vector3(400, 100, 400));
+    return box;
+  }, [chunkCenter]);
+
   const [isClose, setIsClose] = useState(false);
 
   useFrame(({ camera }) => {
@@ -513,7 +521,11 @@ function ObstacleChunk({ data }: { data: any }) {
       // Add chunk radius (~282 for a 400x400 chunk) to renderDistance so chunks don't disappear while still partially in view
       groupRef.current.visible = dist < renderDistance + 282;
 
-      const close = dist < 250 + 282;
+      projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      frustum.setFromProjectionMatrix(projScreenMatrix);
+      const isVisible = frustum.intersectsBox(boundingBox);
+
+      const close = dist < 250 + 282 && isVisible;
       if (isClose !== close) {
         setIsClose(close);
       }
@@ -523,7 +535,7 @@ function ObstacleChunk({ data }: { data: any }) {
   useEffect(() => {
     if (materialRef.current && enableLighting) {
       if (isClose && ultraVisuals) {
-        materialRef.current.roughness = 0.05;
+        materialRef.current.roughness = 0.3;
         materialRef.current.metalness = 0.95;
         materialRef.current.envMap = envMap;
         materialRef.current.envMapIntensity = 1.5;

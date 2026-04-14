@@ -675,7 +675,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         
         {/* CubeCamera to generate envMap for reflections */}
         {ultraVisuals && (
-          <CubeCamera resolution={256} frames={Infinity} near={0.1} far={1000} position={[0, 0.5, 0]}>
+          <CubeCamera resolution={64} frames={Infinity} near={0.1} far={150} position={[0, 0.5, 0]}>
             {(texture) => {
               useEffect(() => {
                 useGameStore.getState().setEnvMap(texture);

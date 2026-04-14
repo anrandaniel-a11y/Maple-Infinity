@@ -13,6 +13,8 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
   const [showDifficulty, setShowDifficulty] = useState(false);
   const [showCustomConfig, setShowCustomConfig] = useState(false);
   const [customActive, setCustomActive] = useState(false);
+  const [activeTab, setActiveTab] = useState<'games' | 'about' | 'admin'>('games');
+  const [pointsData, setPointsData] = useState<Record<string, number>>({});
   
   const [customConfig, setCustomConfig] = useState({
     teams: false,
@@ -31,6 +33,11 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
           setCustomActive(true);
         }
       })
+      .catch(console.error);
+
+    fetch('/api/points')
+      .then(res => res.json())
+      .then(data => setPointsData(data))
       .catch(console.error);
   }, []);
 
@@ -54,7 +61,7 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="z-10 text-center mb-12"
+        className="z-10 text-center mb-8"
       >
         <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-fuchsia-500 to-cyan-400 bg-[length:200%_auto] animate-[gradient_8s_linear_infinite] drop-shadow-[0_0_30px_rgba(255,0,255,0.4)]">
           SELECT DIRECTIVE
@@ -64,8 +71,52 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
         </p>
       </motion.div>
 
-      <div className="z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 max-w-[1400px] w-full">
-        {/* PvP Mode Card */}
+      <div className="z-10 flex gap-4 mb-12">
+        <button
+          onClick={() => setActiveTab('games')}
+          className={`px-8 py-3 rounded-xl font-bold uppercase tracking-widest transition-all duration-300 ${
+            activeTab === 'games' 
+              ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(0,255,255,0.4)]' 
+              : 'bg-black/50 text-cyan-500 border border-cyan-500/30 hover:border-cyan-400'
+          }`}
+        >
+          Games
+        </button>
+        <button
+          onClick={() => setActiveTab('about')}
+          className={`px-8 py-3 rounded-xl font-bold uppercase tracking-widest transition-all duration-300 ${
+            activeTab === 'about' 
+              ? 'bg-fuchsia-500 text-white shadow-[0_0_20px_rgba(255,0,255,0.4)]' 
+              : 'bg-black/50 text-fuchsia-500 border border-fuchsia-500/30 hover:border-fuchsia-400'
+          }`}
+        >
+          About
+        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`px-8 py-3 rounded-xl font-bold uppercase tracking-widest transition-all duration-300 ${
+              activeTab === 'admin' 
+                ? 'bg-yellow-500 text-black shadow-[0_0_20px_rgba(255,255,0,0.4)]' 
+                : 'bg-black/50 text-yellow-500 border border-yellow-500/30 hover:border-yellow-400'
+            }`}
+          >
+            Admin Panel
+          </button>
+        )}
+      </div>
+
+      {activeTab === 'games' ? (
+        <div className="z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 max-w-[1400px] w-full">
+          {/* Player Points Display */}
+          <div className="col-span-full mb-4 flex justify-end">
+            <div className="bg-black/50 border border-cyan-500/30 rounded-xl px-6 py-3 backdrop-blur-md flex items-center gap-3">
+              <span className="text-cyan-200 uppercase tracking-widest text-sm font-bold">Your Points:</span>
+              <span className="text-2xl font-black text-cyan-400 font-mono">{pointsData[nickname] || 0}</span>
+            </div>
+          </div>
+
+          {/* PvP Mode Card */}
         <motion.div
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
@@ -502,7 +553,123 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
             </div>
           </motion.div>
         )}
-      </div>
+        </div>
+      ) : activeTab === 'admin' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="z-10 max-w-4xl w-full bg-black/50 border border-yellow-500/30 rounded-3xl p-8 backdrop-blur-md"
+        >
+          <h2 className="text-3xl font-bold text-yellow-400 mb-6 uppercase tracking-wider">Admin Panel</h2>
+          <div className="space-y-6">
+            <h3 className="text-xl text-yellow-200">Player Points Management</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.entries(pointsData).map(([player, points]) => (
+                <div key={player} className="flex items-center justify-between bg-black/40 p-4 rounded-xl border border-yellow-500/20">
+                  <span className="text-lg font-bold text-white">{player}</span>
+                  <div className="flex items-center gap-4">
+                    <span className="text-yellow-400 font-mono text-xl">{points} pts</span>
+                    <button
+                      onClick={() => {
+                        fetch('/api/points', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ isAdmin, nickname: player, points: 1 })
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                          if (data.success) {
+                            setPointsData(prev => ({ ...prev, [player]: data.points }));
+                          }
+                        });
+                      }}
+                      className="px-3 py-1 bg-yellow-500/20 hover:bg-yellow-500/40 text-yellow-400 rounded-lg border border-yellow-500/50 transition-colors font-bold"
+                    >
+                      +1 Point
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {Object.keys(pointsData).length === 0 && (
+                <p className="text-gray-400 italic">No players have points yet.</p>
+              )}
+            </div>
+            
+            <div className="mt-8 pt-8 border-t border-yellow-500/20">
+              <h3 className="text-xl text-yellow-200 mb-4">Add Points to New Player</h3>
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const form = e.target as HTMLFormElement;
+                  const input = form.elements.namedItem('newPlayer') as HTMLInputElement;
+                  const newPlayer = input.value.trim();
+                  if (newPlayer) {
+                    fetch('/api/points', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ isAdmin, nickname: newPlayer, points: 1 })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                      if (data.success) {
+                        setPointsData(prev => ({ ...prev, [newPlayer]: data.points }));
+                        input.value = '';
+                      }
+                    });
+                  }
+                }}
+                className="flex gap-4"
+              >
+                <input 
+                  type="text" 
+                  name="newPlayer"
+                  placeholder="Player Nickname" 
+                  className="flex-1 bg-black/40 border border-yellow-500/30 rounded-xl px-4 py-2 text-white outline-none focus:border-yellow-400"
+                />
+                <button type="submit" className="px-6 py-2 bg-yellow-500 text-black font-bold rounded-xl hover:bg-yellow-400 transition-colors">
+                  Add Player
+                </button>
+              </form>
+            </div>
+          </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="z-10 max-w-3xl w-full bg-black/50 border border-fuchsia-500/30 rounded-3xl p-8 backdrop-blur-md"
+        >
+          <h2 className="text-3xl font-bold text-fuchsia-400 mb-6 uppercase tracking-wider">About Maple Infinity</h2>
+          <div className="space-y-6 text-gray-300 leading-relaxed">
+            <p>
+              Maple Infinity is a cutting-edge multiplayer combat simulation designed to test your reflexes, tactical thinking, and teamwork. Set in a vibrant neon-drenched cyberpunk arena, players engage in various game modes ranging from fast-paced free-for-alls to cooperative survival against rogue AI.
+            </p>
+            <p>
+              <strong>Game Modes:</strong>
+            </p>
+            <ul className="list-disc list-inside space-y-2 ml-4">
+              <li><strong className="text-cyan-400">Neon Deathmatch (PvP):</strong> Classic free-for-all combat.</li>
+              <li><strong className="text-fuchsia-400">Co-op Survival (PvE):</strong> Team up to survive waves of enemies.</li>
+              <li><strong className="text-blue-400">Team Deathmatch:</strong> 2v2v2 tactical battles.</li>
+              <li><strong className="text-yellow-400">Speed Mode:</strong> Hyper-fast movement, low health.</li>
+              <li><strong className="text-emerald-400">Custom Game:</strong> Configure your own rules and bots.</li>
+            </ul>
+            <div className="pt-8 flex justify-center">
+              <a
+                href="https://github.com/anrandaniel-a11y/Maple-Infinity"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-8 py-4 rounded-xl bg-gradient-to-r from-fuchsia-500 to-cyan-500 text-white font-bold uppercase tracking-widest hover:shadow-[0_0_30px_rgba(255,0,255,0.4)] transition-all duration-300 hover:scale-[1.05] active:scale-[0.95] flex items-center gap-3"
+              >
+                <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                My GitHub
+              </a>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }

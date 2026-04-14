@@ -85,7 +85,7 @@ export default function App() {
 
         {/* Scroll Indicator */}
         <motion.div 
-          className="absolute bottom-4 sm:bottom-10 left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center gap-2 text-cyan-500/50"
+          className="absolute bottom-4 sm:bottom-10 sm:landscape:bottom-2 left-1/2 -translate-x-1/2 hidden sm:flex flex-col items-center gap-2 text-cyan-500/50"
           animate={{ y: [0, 10, 0] }}
           transition={{ repeat: Infinity, duration: 2 }}
         >

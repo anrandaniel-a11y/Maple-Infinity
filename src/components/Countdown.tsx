@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { differenceInDays, differenceInHours, differenceInMinutes, differenceInSeconds } from 'date-fns';
+import { motion, AnimatePresence } from 'motion/react';
 
 const TARGET_DATE = new Date('2027-01-03T00:00:00Z');
 
@@ -47,13 +48,26 @@ export function Countdown() {
 
 function TimeUnit({ value, label, color, shadow }: { value: number; label: string; color: string; shadow: string }) {
   return (
-    <div className="flex flex-col items-center">
-      <div className={`w-16 h-16 sm:w-24 sm:h-24 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 flex items-center justify-center ${shadow}`}>
-        <span className={`text-2xl sm:text-4xl font-mono font-bold ${color}`}>
-          {value.toString().padStart(2, '0')}
-        </span>
+    <motion.div 
+      className="flex flex-col items-center"
+      whileHover={{ scale: 1.05, y: -5 }}
+      transition={{ type: "spring", stiffness: 400, damping: 10 }}
+    >
+      <div className={`w-16 h-16 sm:w-24 sm:h-24 bg-black/40 backdrop-blur-md rounded-2xl border border-white/10 flex items-center justify-center overflow-hidden ${shadow}`}>
+        <AnimatePresence mode="popLayout">
+          <motion.span 
+            key={value}
+            initial={{ y: 20, opacity: 0, scale: 0.5 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: -20, opacity: 0, scale: 0.5 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            className={`text-2xl sm:text-4xl font-display font-bold tracking-wider ${color}`}
+          >
+            {value.toString().padStart(2, '0')}
+          </motion.span>
+        </AnimatePresence>
       </div>
       <span className="text-[10px] sm:text-xs text-gray-400 mt-3 uppercase tracking-[0.2em] font-medium">{label}</span>
-    </div>
+    </motion.div>
   );
 }

@@ -60,6 +60,37 @@ async function startServer() {
     spawnWeapon: string;
   }
 
+  let pointsData: Record<string, number> = {};
+  try {
+    const fs = await import('fs');
+    if (fs.existsSync('points.json')) {
+      pointsData = JSON.parse(fs.readFileSync('points.json', 'utf-8'));
+    }
+  } catch (e) {
+    console.error('Failed to load points', e);
+  }
+
+  const savePoints = async () => {
+    try {
+      const fs = await import('fs');
+      fs.writeFileSync('points.json', JSON.stringify(pointsData));
+    } catch (e) {
+      console.error('Failed to save points', e);
+    }
+  };
+
+  const awardPointsToTeam = (room: Room, winningTeam: string | null) => {
+    if (winningTeam) {
+      for (const pId in room.players) {
+        if (room.teams[pId] === winningTeam) {
+          const nickname = room.players[pId].nickname;
+          pointsData[nickname] = (pointsData[nickname] || 0) + 1;
+        }
+      }
+      savePoints();
+    }
+  };
+
   interface Room {
     players: Record<string, any>;
     weapons: Record<string, any>;
@@ -254,7 +285,8 @@ async function startServer() {
                   }
                 }
                 if (remainingTeams.size <= 1) {
-                  const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+                  const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] as string : null;
+                  awardPointsToTeam(room, winningTeam);
                   io.to(roomId).emit('gameOver', { winningTeam });
                   setTimeout(() => {
                     room.state = 'lobby';
@@ -881,7 +913,8 @@ async function startServer() {
           }
           if (remainingTeams.size <= 1) {
             // Game over
-            const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+            const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] as string : null;
+            awardPointsToTeam(room, winningTeam);
             io.to(roomId).emit('gameOver', { winningTeam });
             setTimeout(() => {
               room.state = 'lobby';
@@ -1538,7 +1571,8 @@ async function startServer() {
               }
             }
             if (remainingTeams.size <= 1) {
-              const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] : null;
+              const winningTeam = remainingTeams.size === 1 ? Array.from(remainingTeams)[0] as string : null;
+              awardPointsToTeam(r, winningTeam);
               io.to(rId).emit('gameOver', { winningTeam });
               setTimeout(() => {
                 r.state = 'lobby';
@@ -1645,6 +1679,18 @@ async function startServer() {
     }
     rooms['custom'] = createRoom('custom', 'normal', config);
     res.json({ success: true });
+  });
+
+  app.get('/api/points', (req, res) => {
+    res.json(pointsData);
+  });
+
+  app.post('/api/points', (req, res) => {
+    const { isAdmin, nickname, points } = req.body;
+    if (!isAdmin) return res.status(403).json({ error: 'Unauthorized' });
+    pointsData[nickname] = (pointsData[nickname] || 0) + points;
+    savePoints();
+    res.json({ success: true, points: pointsData[nickname] });
   });
 
   const dev = process.env.NODE_ENV !== 'production';
