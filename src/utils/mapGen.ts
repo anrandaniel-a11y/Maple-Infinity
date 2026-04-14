@@ -26,7 +26,13 @@ export function getTerrainHeight(x: number, z: number) {
   return y;
 }
 
+let cachedVolumes: Map<number, Int32Array> = new Map();
+
 export function generateVolume(seed: number) {
+  if (cachedVolumes.has(seed)) {
+    return cachedVolumes.get(seed)!;
+  }
+
   const rng = seededRandom(seed);
   const volume = new Int32Array(GRID_W * GRID_H * GRID_D);
   const getIdx = (x: number, y: number, z: number) => x + y * GRID_W + z * GRID_W * GRID_H;
@@ -321,6 +327,15 @@ export function generateVolume(seed: number) {
     }
   }
 
+  cachedVolumes.set(seed, volume);
+  // Prevent memory leak by keeping only the last 10 seeds
+  if (cachedVolumes.size > 10) {
+    const firstKey = cachedVolumes.keys().next().value;
+    if (firstKey !== undefined) {
+      cachedVolumes.delete(firstKey);
+    }
+  }
+  
   return volume;
 }
 

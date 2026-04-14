@@ -37,7 +37,7 @@ interface ShockwaveState {
 
 interface EntityState {
   id: string;
-  type: 'LIGHTBULB' | 'DRONE' | 'MECH' | 'BOSS';
+  type: 'LIGHTBULB' | 'DRONE' | 'MECH' | 'LAVABOT' | 'SNIPER' | 'TANK' | 'SWARMER' | 'HEALER' | 'BOSS';
   x: number;
   y: number;
   z: number;
@@ -159,12 +159,18 @@ interface GameStore {
   setUltraVisuals: (val: boolean) => void;
   setEnvMap: (envMap: THREE.Texture | null) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
+  wave: number;
+  waveState: 'waiting' | 'spawning' | 'cleared';
   victory: boolean;
   banned: boolean;
+  spectating: boolean;
+  spectateTargetId: string | null;
   setBoss: (boss: { id: string, health: number, maxHealth: number } | null) => void;
   updateBossHealth: (health: number) => void;
   setInteractable: (interactable: { type: 'weapon' | 'medkit', id: string, name: string } | null) => void;
   setAdminState: (state: Partial<{ infiniteHealth: boolean; flying: boolean; noclip: boolean; speed: number }>) => void;
+  setSpectating: (spectating: boolean) => void;
+  setSpectateTargetId: (id: string | null) => void;
   updatePlayer: (id: string, data: Partial<PlayerState>) => void;
   addLaser: (laser: LaserState) => void;
   removeLaser: (id: string) => void;
@@ -244,9 +250,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setEnvMap: (val) => set({ envMap: val }),
 
   boss: null,
+  wave: 0,
+  waveState: 'cleared',
+  spectating: false,
+  spectateTargetId: null,
   setBoss: (boss) => set({ boss }),
   updateBossHealth: (health) => set((state) => ({ boss: state.boss ? { ...state.boss, health } : null })),
   setInteractable: (interactable) => set({ interactable }),
+  setSpectating: (spectating) => set({ spectating }),
+  setSpectateTargetId: (id) => set({ spectateTargetId: id }),
 
   setAdminState: (state) => {
     set((s) => {
@@ -276,7 +288,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Connect to the same host/port
     const socket = io({ query: { nickname, isAdmin, gameMode, difficulty } });
 
-    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, structures = {}, seed, boss, state, teams, votesToStart, activeEvent, eventsEnabled, customConfig }) => {
+    socket.on('init', ({ players, weapons, medkits, id, mapIndex, entities = {}, structures = {}, seed, boss, state, teams, votesToStart, activeEvent, eventsEnabled, customConfig, wave, waveState }) => {
       set({ 
         players, 
         weapons, 
@@ -292,7 +304,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         votesToStart: votesToStart || [],
         activeEvent: activeEvent || null,
         eventsEnabled: eventsEnabled !== undefined ? eventsEnabled : true,
-        customConfig
+        customConfig,
+        wave: wave || 0,
+        waveState: waveState || 'cleared'
       });
     });
 
@@ -345,6 +359,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     socket.on('bossDefeated', () => {
       set({ boss: null, victory: true });
       setTimeout(() => set({ victory: false }), 10000);
+    });
+
+    socket.on('waveUpdate', ({ wave, waveState }) => {
+      set({ wave, waveState });
     });
 
     socket.on('entitySpawned', (entity) => {

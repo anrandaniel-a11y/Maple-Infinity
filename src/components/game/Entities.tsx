@@ -16,6 +16,23 @@ const droneEyeMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff0000', e
 const mechMaterialStd = new THREE.MeshStandardMaterial({ color: '#2a2a2a', roughness: 0.8, metalness: 0.6 });
 const mechAccentMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 });
 
+const lavabotMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ff4400' });
+const lavabotMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff4400', emissive: '#ff2200', emissiveIntensity: 0.8, roughness: 0.2, metalness: 0.8 });
+
+const sniperMaterialBasic = new THREE.MeshBasicMaterial({ color: '#000000' });
+const sniperMaterialStd = new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.9, metalness: 0.1 });
+const sniperEyeMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ff00ff' });
+const sniperEyeMaterialStd = new THREE.MeshStandardMaterial({ color: '#ff00ff', emissive: '#ff00ff', emissiveIntensity: 1 });
+
+const tankMaterialBasic = new THREE.MeshBasicMaterial({ color: '#334433' });
+const tankMaterialStd = new THREE.MeshStandardMaterial({ color: '#334433', roughness: 0.9, metalness: 0.4 });
+
+const swarmerMaterialBasic = new THREE.MeshBasicMaterial({ color: '#ffff00' });
+const swarmerMaterialStd = new THREE.MeshStandardMaterial({ color: '#ffff00', emissive: '#ffff00', emissiveIntensity: 0.5, roughness: 0.4, metalness: 0.6 });
+
+const healerMaterialBasic = new THREE.MeshBasicMaterial({ color: '#00ff00' });
+const healerMaterialStd = new THREE.MeshStandardMaterial({ color: '#00ff00', emissive: '#00ff00', emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.2 });
+
 // Reusable frustum culling hook
 export function useFrustumCulling(ref: React.RefObject<THREE.Object3D | null>, radius: number = 5) {
   const { camera } = useThree();
@@ -352,97 +369,295 @@ function Mech({ entity }: { entity: any }) {
   );
 }
 
+function Lavabot({ entity }: { entity: any }) {
+  const ref = useRef<THREE.Group>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
+  const material = enableLighting ? lavabotMaterialStd : lavabotMaterialBasic;
+
+  useFrustumCulling(ref, 4);
+
+  useFrame((state) => {
+    if (!ref.current || !ref.current.visible) return;
+    ref.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.2);
+    ref.current.rotation.y += 0.05;
+    ref.current.position.y += Math.sin(state.clock.elapsedTime * 4) * 0.1;
+  });
+
+  return (
+    <group ref={ref} position={[entity.x, entity.y, entity.z]}>
+      <mesh castShadow={enableLighting} material={material}>
+        <octahedronGeometry args={[1.5, 0]} />
+      </mesh>
+      <mesh position={[0, 2.5, 0]}>
+        <planeGeometry args={[3 * (entity.health / 150), 0.3]} />
+        <meshBasicMaterial color={entity.health > 75 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function Sniper({ entity }: { entity: any }) {
+  const ref = useRef<THREE.Group>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
+  const material = enableLighting ? sniperMaterialStd : sniperMaterialBasic;
+  const eyeMaterial = enableLighting ? sniperEyeMaterialStd : sniperEyeMaterialBasic;
+
+  useFrustumCulling(ref, 4);
+
+  useFrame(() => {
+    if (!ref.current || !ref.current.visible) return;
+    ref.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.2);
+    if (entity.targetId) {
+      // Rotate towards target could be added if we had target position, but we don't have it easily here
+      // Just spin slowly
+      ref.current.rotation.y += 0.01;
+    }
+  });
+
+  return (
+    <group ref={ref} position={[entity.x, entity.y, entity.z]}>
+      <mesh castShadow={enableLighting} material={material} position={[0, 1, 0]}>
+        <cylinderGeometry args={[0.5, 0.5, 3, 8]} />
+      </mesh>
+      <mesh castShadow={enableLighting} material={eyeMaterial} position={[0, 2, 0.5]}>
+        <sphereGeometry args={[0.3, 8, 8]} />
+      </mesh>
+      <mesh position={[0, 3.5, 0]}>
+        <planeGeometry args={[2 * (entity.health / 80), 0.2]} />
+        <meshBasicMaterial color={entity.health > 40 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function Tank({ entity }: { entity: any }) {
+  const ref = useRef<THREE.Group>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
+  const material = enableLighting ? tankMaterialStd : tankMaterialBasic;
+
+  useFrustumCulling(ref, 6);
+
+  useFrame(() => {
+    if (!ref.current || !ref.current.visible) return;
+    ref.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.2);
+  });
+
+  return (
+    <group ref={ref} position={[entity.x, entity.y, entity.z]}>
+      <mesh castShadow={enableLighting} material={material} position={[0, 1.5, 0]}>
+        <boxGeometry args={[4, 3, 4]} />
+      </mesh>
+      <mesh position={[0, 4, 0]}>
+        <planeGeometry args={[4 * (entity.health / 500), 0.4]} />
+        <meshBasicMaterial color={entity.health > 250 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function Swarmer({ entity }: { entity: any }) {
+  const ref = useRef<THREE.Group>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
+  const material = enableLighting ? swarmerMaterialStd : swarmerMaterialBasic;
+
+  useFrustumCulling(ref, 2);
+
+  useFrame((state) => {
+    if (!ref.current || !ref.current.visible) return;
+    ref.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.3);
+    ref.current.rotation.z += 0.1;
+    ref.current.rotation.x += 0.1;
+  });
+
+  return (
+    <group ref={ref} position={[entity.x, entity.y, entity.z]}>
+      <mesh castShadow={enableLighting} material={material}>
+        <tetrahedronGeometry args={[0.8, 0]} />
+      </mesh>
+      <mesh position={[0, 1.5, 0]}>
+        <planeGeometry args={[1.5 * (entity.health / 30), 0.15]} />
+        <meshBasicMaterial color={entity.health > 15 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function Healer({ entity }: { entity: any }) {
+  const ref = useRef<THREE.Group>(null);
+  const enableLighting = useGameStore(state => state.enableLighting);
+  const material = enableLighting ? healerMaterialStd : healerMaterialBasic;
+
+  useFrustumCulling(ref, 4);
+
+  useFrame((state) => {
+    if (!ref.current || !ref.current.visible) return;
+    ref.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.2);
+    ref.current.rotation.y += 0.02;
+    ref.current.position.y += Math.sin(state.clock.elapsedTime * 2) * 0.2;
+  });
+
+  return (
+    <group ref={ref} position={[entity.x, entity.y, entity.z]}>
+      <mesh castShadow={enableLighting} material={material}>
+        <torusKnotGeometry args={[1, 0.3, 64, 8]} />
+      </mesh>
+      <mesh position={[0, 2.5, 0]}>
+        <planeGeometry args={[2.5 * (entity.health / 120), 0.25]} />
+        <meshBasicMaterial color={entity.health > 60 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
 function Boss({ entity }: { entity: any }) {
   const groupRef = useRef<THREE.Group>(null);
   const coreRef = useRef<THREE.Mesh>(null);
   const ring1Ref = useRef<THREE.Mesh>(null);
   const ring2Ref = useRef<THREE.Mesh>(null);
+  const ring3Ref = useRef<THREE.Mesh>(null);
   const enableLighting = useGameStore(state => state.enableLighting);
 
-  useFrustumCulling(groupRef, 15);
+  useFrustumCulling(groupRef, 30);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!groupRef.current || !groupRef.current.visible) return;
     
     groupRef.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.1);
     
+    const time = state.clock.elapsedTime;
+    
     if (entity.isPreparingAttack) {
-      groupRef.current.position.y += Math.sin(state.clock.elapsedTime * 50) * 0.1;
+      groupRef.current.position.y += Math.sin(time * 50) * 0.2;
+      groupRef.current.scale.setScalar(1 + Math.sin(time * 20) * 0.05);
+    } else {
+      groupRef.current.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+      groupRef.current.position.y += Math.sin(time * 2) * 0.02;
     }
     
     if (coreRef.current) {
-      coreRef.current.rotation.y += 0.01;
-      coreRef.current.rotation.x += 0.005;
+      coreRef.current.rotation.y += delta * 1.5;
+      coreRef.current.rotation.x += delta * 0.8;
     }
     if (ring1Ref.current) {
-      ring1Ref.current.rotation.x += 0.02;
-      ring1Ref.current.rotation.y -= 0.01;
+      ring1Ref.current.rotation.x += delta * 2;
+      ring1Ref.current.rotation.y -= delta * 1.5;
     }
     if (ring2Ref.current) {
-      ring2Ref.current.rotation.z += 0.015;
-      ring2Ref.current.rotation.x -= 0.02;
+      ring2Ref.current.rotation.z += delta * 1.8;
+      ring2Ref.current.rotation.x -= delta * 2.2;
+    }
+    if (ring3Ref.current) {
+      ring3Ref.current.rotation.y += delta * 2.5;
+      ring3Ref.current.rotation.z -= delta * 1.2;
     }
   });
 
-  const CoreMaterial = enableLighting ? 'meshStandardMaterial' : 'meshBasicMaterial';
-  const RingMaterial = enableLighting ? 'meshStandardMaterial' : 'meshBasicMaterial';
+  const coreColor = entity.isPreparingAttack ? "#ff0000" : "#ff00ff";
+  const shieldColor = "#ffffff";
 
   return (
     <group ref={groupRef} position={[entity.x, entity.y, entity.z]}>
-      <Detailed distances={[0, 100, 250]}>
+      <Detailed distances={[0, 150, 300]}>
         {/* High Detail */}
         <group>
+          {/* Core */}
           <mesh castShadow={enableLighting} ref={coreRef}>
-            <octahedronGeometry args={[4, 2]} />
-            <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} wireframe={entity.invulnerable} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <icosahedronGeometry args={[5, 2]} />
+            {enableLighting ? (
+              <meshStandardMaterial color={coreColor} wireframe={entity.invulnerable} emissive={coreColor} emissiveIntensity={0.8} roughness={0.2} metalness={0.9} />
+            ) : (
+              <meshBasicMaterial color={coreColor} wireframe={entity.invulnerable} />
+            )}
           </mesh>
+          
+          {/* Inner Ring */}
           <mesh castShadow={enableLighting} ref={ring1Ref}>
-            <torusGeometry args={[6, 0.5, 16, 64]} />
-            <RingMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <torusGeometry args={[7, 0.6, 16, 64]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.6} roughness={0.3} metalness={0.8} />
+            ) : (
+              <meshBasicMaterial color="#00ffff" />
+            )}
           </mesh>
+          
+          {/* Middle Ring */}
           <mesh castShadow={enableLighting} ref={ring2Ref}>
-            <torusGeometry args={[8, 0.3, 16, 64]} />
-            <RingMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <torusGeometry args={[9, 0.4, 16, 64]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.6} roughness={0.3} metalness={0.8} />
+            ) : (
+              <meshBasicMaterial color="#ffff00" />
+            )}
           </mesh>
+
+          {/* Outer Ring */}
+          <mesh castShadow={enableLighting} ref={ring3Ref}>
+            <torusGeometry args={[11, 0.2, 16, 64]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#ff00ff" emissive="#ff00ff" emissiveIntensity={0.6} roughness={0.3} metalness={0.8} />
+            ) : (
+              <meshBasicMaterial color="#ff00ff" />
+            )}
+          </mesh>
+
+          {/* Invulnerability Shield */}
           {entity.invulnerable && (
             <mesh>
-              <sphereGeometry args={[10, 32, 32]} />
-              <meshBasicMaterial color="#ffffff" transparent opacity={0.2} wireframe />
+              <sphereGeometry args={[13, 32, 32]} />
+              <meshBasicMaterial color={shieldColor} transparent opacity={0.15} wireframe />
             </mesh>
           )}
         </group>
+        
         {/* Medium Detail */}
         <group>
           <mesh castShadow={enableLighting}>
-            <octahedronGeometry args={[4, 0]} />
-            <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} wireframe={entity.invulnerable} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <icosahedronGeometry args={[5, 1]} />
+            {enableLighting ? (
+              <meshStandardMaterial color={coreColor} wireframe={entity.invulnerable} emissive={coreColor} emissiveIntensity={0.8} roughness={0.2} metalness={0.9} />
+            ) : (
+              <meshBasicMaterial color={coreColor} wireframe={entity.invulnerable} />
+            )}
           </mesh>
           <mesh castShadow={enableLighting}>
-            <torusGeometry args={[6, 0.5, 8, 32]} />
-            <RingMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <torusGeometry args={[7, 0.6, 8, 32]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={0.6} roughness={0.3} metalness={0.8} />
+            ) : (
+              <meshBasicMaterial color="#00ffff" />
+            )}
           </mesh>
           <mesh castShadow={enableLighting}>
-            <torusGeometry args={[8, 0.3, 8, 32]} />
-            <RingMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+            <torusGeometry args={[9, 0.4, 8, 32]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#ffff00" emissive="#ffff00" emissiveIntensity={0.6} roughness={0.3} metalness={0.8} />
+            ) : (
+              <meshBasicMaterial color="#ffff00" />
+            )}
           </mesh>
           {entity.invulnerable && (
             <mesh>
-              <sphereGeometry args={[10, 16, 16]} />
-              <meshBasicMaterial color="#ffffff" transparent opacity={0.2} wireframe />
+              <sphereGeometry args={[13, 16, 16]} />
+              <meshBasicMaterial color={shieldColor} transparent opacity={0.15} wireframe />
             </mesh>
           )}
         </group>
+        
         {/* Low Detail */}
         <mesh castShadow={enableLighting}>
-          <boxGeometry args={[12, 12, 12]} />
-          <CoreMaterial color={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissive={entity.isPreparingAttack ? "#ff0000" : "#ff00ff"} emissiveIntensity={0.5} roughness={0.5} metalness={0.8} />
+          <boxGeometry args={[14, 14, 14]} />
+          {enableLighting ? (
+            <meshStandardMaterial color={coreColor} emissive={coreColor} emissiveIntensity={0.8} roughness={0.2} metalness={0.9} />
+          ) : (
+            <meshBasicMaterial color={coreColor} />
+          )}
         </mesh>
       </Detailed>
       
       {/* Health Bar */}
-      <mesh position={[0, 12, 0]}>
-        <planeGeometry args={[10 * (entity.health / 2000), 1]} />
-        <meshBasicMaterial color={entity.invulnerable ? '#888888' : (entity.health > 1000 ? '#00ff00' : '#ff0000')} side={THREE.DoubleSide} />
+      <mesh position={[0, 16, 0]}>
+        <planeGeometry args={[15 * (entity.health / (entity.maxHealth || 10000)), 1.5]} />
+        <meshBasicMaterial color={entity.invulnerable ? '#888888' : (entity.health > (entity.maxHealth || 10000) * 0.5 ? '#00ff00' : '#ff0000')} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -460,6 +675,16 @@ export function Entities() {
           return <Drone key={entity.id} entity={entity} />;
         } else if (entity.type === 'MECH') {
           return <Mech key={entity.id} entity={entity} />;
+        } else if (entity.type === 'LAVABOT') {
+          return <Lavabot key={entity.id} entity={entity} />;
+        } else if (entity.type === 'SNIPER') {
+          return <Sniper key={entity.id} entity={entity} />;
+        } else if (entity.type === 'TANK') {
+          return <Tank key={entity.id} entity={entity} />;
+        } else if (entity.type === 'SWARMER') {
+          return <Swarmer key={entity.id} entity={entity} />;
+        } else if (entity.type === 'HEALER') {
+          return <Healer key={entity.id} entity={entity} />;
         } else if (entity.type === 'BOSS') {
           return <Boss key={entity.id} entity={entity} />;
         }

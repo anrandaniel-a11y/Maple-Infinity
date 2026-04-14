@@ -70,7 +70,8 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (useGameStore.getState().players[myId || '']?.health <= 0) return;
+      const state = useGameStore.getState();
+      if (state.players[myId || '']?.health <= 0 || state.spectating) return;
       if (e.code === 'KeyW') keysRef.current.w = true;
       if (e.code === 'KeyA') keysRef.current.a = true;
       if (e.code === 'KeyS') keysRef.current.s = true;
@@ -159,7 +160,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     // Build Ramp
     const handleBuildRamp = () => {
       const state = useGameStore.getState();
-      if (state.isCustomizingControls) return;
+      if (state.isCustomizingControls || state.spectating) return;
       const currentMe = state.myId ? state.players[state.myId] : null;
       if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
 
@@ -190,7 +191,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     // Melee Attack
     const handleMelee = () => {
       const state = useGameStore.getState();
-      if (state.isCustomizingControls) return;
+      if (state.isCustomizingControls || state.spectating) return;
       const currentMe = state.myId ? state.players[state.myId] : null;
       if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
 
@@ -224,7 +225,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     // Shooting
     const handleShoot = () => {
       const state = useGameStore.getState();
-      if (state.isCustomizingControls) return;
+      if (state.isCustomizingControls || state.spectating) return;
       const currentMe = state.myId ? state.players[state.myId] : null;
       if (!socket || !myId || !currentMe || currentMe.health <= 0) return;
 
@@ -286,7 +287,7 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
     const handleMobileDash = () => {
       const state = useGameStore.getState();
-      if (state.isCustomizingControls) return;
+      if (state.isCustomizingControls || state.spectating) return;
       mobileDashRef.current = true;
     };
 
@@ -317,7 +318,9 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     };
 
     const handleMobileInteract = () => {
-      const interactable = useGameStore.getState().interactable;
+      const state = useGameStore.getState();
+      if (state.isCustomizingControls || state.spectating) return;
+      const interactable = state.interactable;
       if (interactable && socket) {
         if (interactable.type === 'weapon') {
           socket.emit('pickupWeapon', interactable.id);
@@ -371,6 +374,21 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
 
     const pos = bodyRef.current.translation();
     const linvel = bodyRef.current.linvel();
+
+    const state = useGameStore.getState();
+    if (state.spectating && state.spectateTargetId) {
+      const target = state.players[state.spectateTargetId];
+      if (target) {
+        // Smoothly interpolate camera to target
+        camera.position.lerp(new Vector3(target.x, target.y + 0.6, target.z), 0.2);
+        
+        // Interpolate rotation
+        const targetEuler = new Euler(target.rx, target.ry, target.rz, 'YXZ');
+        const targetQuat = new Quaternion().setFromEuler(targetEuler);
+        camera.quaternion.slerp(targetQuat, 0.2);
+        return;
+      }
+    }
 
     if (me.health <= 0 || isCustomizingControls) {
       camera.position.set(pos.x, pos.y + 0.6, pos.z);
@@ -639,12 +657,14 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
     }
   });
 
+  const spectating = useGameStore((state) => state.spectating);
+
   return (
     <>
       {!isMobile && <PointerLockControls pointerSpeed={sensitivity} />}
       
       {/* Attach Gun to Camera */}
-      <FirstPersonWeapon weapon={me?.weapon || 'DEFAULT'} color={me?.color || '#fff'} />
+      {!spectating && <FirstPersonWeapon weapon={me?.weapon || 'DEFAULT'} color={me?.color || '#fff'} />}
 
       <RigidBody ref={bodyRef} colliders={false} mass={1} type="dynamic" position={[me?.x || 0, me?.y || 100, me?.z || 0]} enabledRotations={[false, false, false]} friction={0} restitution={0} ccd gravityScale={2.5}>
         <CapsuleCollider args={[0.5, 0.4]} friction={0} restitution={0} sensor={adminState.noclip} />

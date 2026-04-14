@@ -1,5 +1,7 @@
 import React from 'react';
 import * as THREE from 'three';
+import { Detailed } from '@react-three/drei';
+import { useGameStore } from '../../store/gameStore';
 import { createWoodTexture, createMetalTexture, createCarbonFiberTexture, createCamoTexture, createDamascusTexture } from '../../utils/textures';
 
 // Shared Geometries
@@ -41,6 +43,13 @@ const arStockGeo = new THREE.BoxGeometry(0.04, 0.12, 0.25);
 const arStockTubeGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.15);
 const arSightGeo = new THREE.BoxGeometry(0.03, 0.05, 0.08);
 const arRailGeo = new THREE.BoxGeometry(0.06, 0.01, 0.4);
+
+// Low Detail Geometries
+const lowRevolverGeo = new THREE.BoxGeometry(0.06, 0.2, 0.4);
+const lowShotgunGeo = new THREE.BoxGeometry(0.06, 0.15, 0.8);
+const lowRpgGeo = new THREE.BoxGeometry(0.1, 0.15, 1.2);
+const lowKnifeGeo = new THREE.BoxGeometry(0.03, 0.06, 0.4);
+const lowArGeo = new THREE.BoxGeometry(0.06, 0.2, 0.8);
 
 // Textures (lazy loaded)
 let woodTex: THREE.Texture;
@@ -120,8 +129,6 @@ function getDefaultWeaponMaterial(color: string, enableLighting: boolean) {
   }
 }
 
-import { useGameStore } from '../../store/gameStore';
-
 export function WeaponModel({ type, color = '#00ffff', isFirstPerson = false }: { type?: string, color?: string, isFirstPerson?: boolean }) {
   const enableLighting = useGameStore(state => state.enableLighting);
 
@@ -144,92 +151,132 @@ export function WeaponModel({ type, color = '#00ffff', isFirstPerson = false }: 
   
   if (type === 'REVOLVER') {
     return (
-      <group scale={isFirstPerson ? 1.5 : 0.8}>
-        {/* Grip */}
-        <mesh castShadow={enableLighting} position={[0, -0.1, 0.05]} rotation={[0.3, 0, 0]} geometry={revolverGripGeo} material={woodMat} />
-        {/* Frame */}
-        <mesh castShadow={enableLighting} position={[0, 0, -0.05]} geometry={revolverFrameGeo} material={lightMetalMat} />
-        {/* Cylinder */}
-        <mesh castShadow={enableLighting} position={[0, 0.02, -0.05]} rotation={[Math.PI/2, 0, 0]} geometry={revolverCylinderGeo} material={darkMetalMat} />
-        {/* Barrel */}
-        <mesh castShadow={enableLighting} position={[0, 0.04, -0.25]} rotation={[Math.PI/2, 0, 0]} geometry={revolverBarrelGeo} material={lightMetalMat} />
-        {/* Underbarrel */}
-        <mesh castShadow={enableLighting} position={[0, 0.01, -0.25]} geometry={revolverUnderbarrelGeo} material={lightMetalMat} />
-        {/* Sight */}
-        <mesh castShadow={enableLighting} position={[0, 0.07, -0.4]} geometry={revolverSightGeo} material={darkMetalMat} />
-      </group>
+      <Detailed distances={[0, 30, 80]} scale={isFirstPerson ? 1.5 : 0.8}>
+        <group>
+          {/* Grip */}
+          <mesh castShadow={enableLighting} position={[0, -0.1, 0.05]} rotation={[0.3, 0, 0]} geometry={revolverGripGeo} material={woodMat} />
+          {/* Frame */}
+          <mesh castShadow={enableLighting} position={[0, 0, -0.05]} geometry={revolverFrameGeo} material={lightMetalMat} />
+          {/* Cylinder */}
+          <mesh castShadow={enableLighting} position={[0, 0.02, -0.05]} rotation={[Math.PI/2, 0, 0]} geometry={revolverCylinderGeo} material={darkMetalMat} />
+          {/* Barrel */}
+          <mesh castShadow={enableLighting} position={[0, 0.04, -0.25]} rotation={[Math.PI/2, 0, 0]} geometry={revolverBarrelGeo} material={lightMetalMat} />
+          {/* Underbarrel */}
+          <mesh castShadow={enableLighting} position={[0, 0.01, -0.25]} geometry={revolverUnderbarrelGeo} material={lightMetalMat} />
+          {/* Sight */}
+          <mesh castShadow={enableLighting} position={[0, 0.07, -0.4]} geometry={revolverSightGeo} material={darkMetalMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.1]} geometry={lowRevolverGeo} material={lightMetalMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.1]} geometry={lowRevolverGeo} material={lightMetalMat} />
+        </group>
+      </Detailed>
     );
   }
   if (type === 'SHOTGUN') {
     return (
-      <group scale={isFirstPerson ? 1.2 : 0.8}>
-        {/* Stock */}
-        <mesh castShadow={enableLighting} position={[0, -0.05, 0.2]} geometry={shotgunStockGeo} material={woodMat} />
-        {/* Body */}
-        <mesh castShadow={enableLighting} position={[0, 0, -0.15]} geometry={shotgunBodyGeo} material={darkMetalMat} />
-        {/* Barrels (Double Barrel) */}
-        <mesh castShadow={enableLighting} position={[0.02, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={shotgunBarrelGeo} material={darkMetalMat} />
-        <mesh castShadow={enableLighting} position={[-0.02, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={shotgunBarrelGeo} material={darkMetalMat} />
-        {/* Pump / Forend */}
-        <mesh castShadow={enableLighting} position={[0, -0.03, -0.35]} geometry={shotgunPumpGeo} material={woodMat} />
-        {/* Sight */}
-        <mesh castShadow={enableLighting} position={[0, 0.055, -0.7]} geometry={shotgunSightGeo} material={lightMetalMat} />
-      </group>
+      <Detailed distances={[0, 30, 80]} scale={isFirstPerson ? 1.2 : 0.8}>
+        <group>
+          {/* Stock */}
+          <mesh castShadow={enableLighting} position={[0, -0.05, 0.2]} geometry={shotgunStockGeo} material={woodMat} />
+          {/* Body */}
+          <mesh castShadow={enableLighting} position={[0, 0, -0.15]} geometry={shotgunBodyGeo} material={darkMetalMat} />
+          {/* Barrels (Double Barrel) */}
+          <mesh castShadow={enableLighting} position={[0.02, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={shotgunBarrelGeo} material={darkMetalMat} />
+          <mesh castShadow={enableLighting} position={[-0.02, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={shotgunBarrelGeo} material={darkMetalMat} />
+          {/* Pump / Forend */}
+          <mesh castShadow={enableLighting} position={[0, -0.03, -0.35]} geometry={shotgunPumpGeo} material={woodMat} />
+          {/* Sight */}
+          <mesh castShadow={enableLighting} position={[0, 0.055, -0.7]} geometry={shotgunSightGeo} material={lightMetalMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.2]} geometry={lowShotgunGeo} material={darkMetalMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.2]} geometry={lowShotgunGeo} material={darkMetalMat} />
+        </group>
+      </Detailed>
     );
   }
   if (type === 'RPG') {
     return (
-      <group scale={isFirstPerson ? 1.0 : 0.7}>
-        {/* Tube */}
-        <mesh castShadow={enableLighting} position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]} geometry={rpgTubeGeo} material={oliveMat} />
-        {/* Warhead Base */}
-        <mesh castShadow={enableLighting} position={[0, 0, -0.55]} rotation={[Math.PI/2, 0, 0]} geometry={rpgWarheadGeo} material={warheadMat} />
-        {/* Warhead Tip */}
-        <mesh castShadow={enableLighting} position={[0, 0, -0.75]} rotation={[-Math.PI/2, 0, 0]} geometry={rpgWarheadTipGeo} material={warheadMat} />
-        {/* Exhaust */}
-        <mesh castShadow={enableLighting} position={[0, 0, 0.55]} rotation={[Math.PI/2, 0, 0]} geometry={rpgExhaustGeo} material={exhaustMat} />
-        {/* Grips */}
-        <mesh castShadow={enableLighting} position={[0, -0.12, -0.1]} rotation={[0.2, 0, 0]} geometry={rpgGripGeo} material={blackPlasticMat} />
-        <mesh castShadow={enableLighting} position={[0, -0.12, 0.1]} rotation={[0.2, 0, 0]} geometry={rpgGripGeo} material={blackPlasticMat} />
-        {/* Scope */}
-        <mesh castShadow={enableLighting} position={[-0.08, 0.08, -0.1]} rotation={[Math.PI/2, 0, 0]} geometry={rpgScopeGeo} material={blackPlasticMat} />
-      </group>
+      <Detailed distances={[0, 30, 80]} scale={isFirstPerson ? 1.0 : 0.7}>
+        <group>
+          {/* Tube */}
+          <mesh castShadow={enableLighting} position={[0, 0, 0]} rotation={[Math.PI/2, 0, 0]} geometry={rpgTubeGeo} material={oliveMat} />
+          {/* Warhead Base */}
+          <mesh castShadow={enableLighting} position={[0, 0, -0.55]} rotation={[Math.PI/2, 0, 0]} geometry={rpgWarheadGeo} material={warheadMat} />
+          {/* Warhead Tip */}
+          <mesh castShadow={enableLighting} position={[0, 0, -0.75]} rotation={[-Math.PI/2, 0, 0]} geometry={rpgWarheadTipGeo} material={warheadMat} />
+          {/* Exhaust */}
+          <mesh castShadow={enableLighting} position={[0, 0, 0.55]} rotation={[Math.PI/2, 0, 0]} geometry={rpgExhaustGeo} material={exhaustMat} />
+          {/* Grips */}
+          <mesh castShadow={enableLighting} position={[0, -0.12, -0.1]} rotation={[0.2, 0, 0]} geometry={rpgGripGeo} material={blackPlasticMat} />
+          <mesh castShadow={enableLighting} position={[0, -0.12, 0.1]} rotation={[0.2, 0, 0]} geometry={rpgGripGeo} material={blackPlasticMat} />
+          {/* Scope */}
+          <mesh castShadow={enableLighting} position={[-0.08, 0.08, -0.1]} rotation={[Math.PI/2, 0, 0]} geometry={rpgScopeGeo} material={blackPlasticMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, 0]} geometry={lowRpgGeo} material={oliveMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, 0]} geometry={lowRpgGeo} material={oliveMat} />
+        </group>
+      </Detailed>
     );
   }
   if (type === 'KNIFE') {
     return (
-      <group scale={isFirstPerson ? 1.5 : 0.8}>
-        {/* Handle */}
-        <mesh castShadow={enableLighting} position={[0, 0, 0.1]} geometry={knifeHandleGeo} material={blackPlasticMat} />
-        {/* Guard */}
-        <mesh castShadow={enableLighting} position={[0, 0, 0.01]} geometry={knifeGuardGeo} material={darkMetalMat} />
-        {/* Blade */}
-        <mesh castShadow={enableLighting} position={[0, 0, -0.15]} rotation={[-Math.PI/2, 0, 0]} geometry={knifeBladeGeo} material={bladeMat} />
-      </group>
+      <Detailed distances={[0, 30, 80]} scale={isFirstPerson ? 1.5 : 0.8}>
+        <group>
+          {/* Handle */}
+          <mesh castShadow={enableLighting} position={[0, 0, 0.1]} geometry={knifeHandleGeo} material={blackPlasticMat} />
+          {/* Guard */}
+          <mesh castShadow={enableLighting} position={[0, 0, 0.01]} geometry={knifeGuardGeo} material={darkMetalMat} />
+          {/* Blade */}
+          <mesh castShadow={enableLighting} position={[0, 0, -0.15]} rotation={[-Math.PI/2, 0, 0]} geometry={knifeBladeGeo} material={bladeMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.05]} geometry={lowKnifeGeo} material={bladeMat} />
+        </group>
+        <group>
+          <mesh position={[0, 0, -0.05]} geometry={lowKnifeGeo} material={bladeMat} />
+        </group>
+      </Detailed>
     );
   }
   
   // DEFAULT (Assault Rifle)
   return (
-    <group scale={isFirstPerson ? 1.2 : 0.8}>
-      {/* Body */}
-      <mesh castShadow={enableLighting} position={[0, 0, 0]} geometry={arBodyGeo} material={defaultMat} />
-      {/* Rail */}
-      <mesh castShadow={enableLighting} position={[0, 0.065, -0.05]} geometry={arRailGeo} material={darkMetalMat} />
-      {/* Grip */}
-      <mesh castShadow={enableLighting} position={[0, -0.1, 0.15]} rotation={[0.2, 0, 0]} geometry={arGripGeo} material={blackPlasticMat} />
-      {/* Magazine */}
-      <mesh castShadow={enableLighting} position={[0, -0.15, -0.05]} rotation={[-0.1, 0, 0]} geometry={arMagGeo} material={darkMetalMat} />
-      {/* Barrel Shroud */}
-      <mesh castShadow={enableLighting} position={[0, 0.02, -0.3]} rotation={[Math.PI/2, 0, 0]} geometry={arBarrelShroudGeo} material={blackPlasticMat} />
-      {/* Barrel */}
-      <mesh castShadow={enableLighting} position={[0, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={arBarrelGeo} material={lightMetalMat} />
-      {/* Stock Tube */}
-      <mesh castShadow={enableLighting} position={[0, 0.02, 0.3]} rotation={[Math.PI/2, 0, 0]} geometry={arStockTubeGeo} material={darkMetalMat} />
-      {/* Stock */}
-      <mesh castShadow={enableLighting} position={[0, -0.02, 0.4]} geometry={arStockGeo} material={blackPlasticMat} />
-      {/* Sight */}
-      <mesh castShadow={enableLighting} position={[0, 0.09, 0.05]} geometry={arSightGeo} material={blackPlasticMat} />
-    </group>
+    <Detailed distances={[0, 30, 80]} scale={isFirstPerson ? 1.2 : 0.8}>
+      <group>
+        {/* Body */}
+        <mesh castShadow={enableLighting} position={[0, 0, 0]} geometry={arBodyGeo} material={defaultMat} />
+        {/* Rail */}
+        <mesh castShadow={enableLighting} position={[0, 0.065, -0.05]} geometry={arRailGeo} material={darkMetalMat} />
+        {/* Grip */}
+        <mesh castShadow={enableLighting} position={[0, -0.1, 0.15]} rotation={[0.2, 0, 0]} geometry={arGripGeo} material={blackPlasticMat} />
+        {/* Magazine */}
+        <mesh castShadow={enableLighting} position={[0, -0.15, -0.05]} rotation={[-0.1, 0, 0]} geometry={arMagGeo} material={darkMetalMat} />
+        {/* Barrel Shroud */}
+        <mesh castShadow={enableLighting} position={[0, 0.02, -0.3]} rotation={[Math.PI/2, 0, 0]} geometry={arBarrelShroudGeo} material={blackPlasticMat} />
+        {/* Barrel */}
+        <mesh castShadow={enableLighting} position={[0, 0.02, -0.45]} rotation={[Math.PI/2, 0, 0]} geometry={arBarrelGeo} material={lightMetalMat} />
+        {/* Stock Tube */}
+        <mesh castShadow={enableLighting} position={[0, 0.02, 0.3]} rotation={[Math.PI/2, 0, 0]} geometry={arStockTubeGeo} material={darkMetalMat} />
+        {/* Stock */}
+        <mesh castShadow={enableLighting} position={[0, -0.02, 0.4]} geometry={arStockGeo} material={blackPlasticMat} />
+        {/* Sight */}
+        <mesh castShadow={enableLighting} position={[0, 0.09, 0.05]} geometry={arSightGeo} material={blackPlasticMat} />
+      </group>
+      <group>
+        <mesh position={[0, 0, 0]} geometry={lowArGeo} material={defaultMat} />
+      </group>
+      <group>
+        <mesh position={[0, 0, 0]} geometry={lowArGeo} material={defaultMat} />
+      </group>
+    </Detailed>
   );
 }

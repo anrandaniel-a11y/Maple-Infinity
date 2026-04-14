@@ -24,6 +24,8 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
   const gameMode = useGameStore((state) => state.gameMode);
   const interactable = useGameStore((state) => state.interactable);
   const boss = useGameStore((state) => state.boss);
+  const wave = useGameStore((state) => state.wave);
+  const waveState = useGameStore((state) => state.waveState);
   const victory = useGameStore((state) => state.victory);
   const activeEvent = useGameStore((state) => state.activeEvent);
   const eventsEnabled = useGameStore((state) => state.eventsEnabled);
@@ -131,6 +133,43 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
     return () => cancelAnimationFrame(animationFrameId);
   }, []);
 
+  const spectating = useGameStore((state) => state.spectating);
+  const spectateTargetId = useGameStore((state) => state.spectateTargetId);
+  const setSpectateTargetId = useGameStore((state) => state.setSpectateTargetId);
+  const setSpectating = useGameStore((state) => state.setSpectating);
+
+  useEffect(() => {
+    if (me && me.health <= 0 && !spectating) {
+      setSpectating(true);
+    } else if (me && me.health > 0 && spectating && !adminState.flying) {
+      setSpectating(false);
+    }
+  }, [me?.health, spectating, setSpectating, adminState.flying]);
+
+  useEffect(() => {
+    if (spectating) {
+      const handleSpectatorClick = (e: MouseEvent) => {
+        if (adminOpen || settingsOpen) return;
+        
+        const alivePlayers = Object.values(players).filter(p => p.health > 0 && p.id !== myId);
+        if (alivePlayers.length === 0) return;
+
+        let currentIndex = alivePlayers.findIndex(p => p.id === spectateTargetId);
+        
+        if (e.button === 0) { // Left click
+          currentIndex = (currentIndex + 1) % alivePlayers.length;
+        } else if (e.button === 2) { // Right click
+          currentIndex = (currentIndex - 1 + alivePlayers.length) % alivePlayers.length;
+        }
+        
+        setSpectateTargetId(alivePlayers[currentIndex].id);
+      };
+
+      window.addEventListener('mousedown', handleSpectatorClick);
+      return () => window.removeEventListener('mousedown', handleSpectatorClick);
+    }
+  }, [spectating, players, spectateTargetId, adminOpen, settingsOpen, myId, setSpectateTargetId]);
+
   if (!me) return null;
 
   let maxHealth = gameMode === 'speed' ? 125 : 500;
@@ -141,18 +180,20 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
   return (
     <div className="absolute inset-0 pointer-events-none">
       {/* Crosshair */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-cyan-400 opacity-50 flex flex-col items-center">
-        <Crosshair size={32} />
-        {/* Reload Bar */}
-        {isReloading && (
-          <div className="w-16 h-1 mt-4 bg-gray-800 rounded-full overflow-hidden border border-white/10">
-            <div 
-              className="h-full bg-cyan-400 transition-none"
-              style={{ width: `${reloadProgress}%` }}
-            />
-          </div>
-        )}
-      </div>
+      {!spectating && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-cyan-400 opacity-50 flex flex-col items-center">
+          <Crosshair size={32} />
+          {/* Reload Bar */}
+          {isReloading && (
+            <div className="w-16 h-1 mt-4 bg-gray-800 rounded-full overflow-hidden border border-white/10">
+              <div 
+                className="h-full bg-cyan-400 transition-none"
+                style={{ width: `${reloadProgress}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Boss Health Bar */}
       {boss && (
@@ -186,6 +227,25 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
         </div>
       )}
 
+      {/* Wave UI */}
+      {gameMode === 'pve' && !boss && wave > 0 && (
+        <div className="absolute top-10 left-1/2 transform -translate-x-1/2 flex flex-col items-center pointer-events-none z-40">
+          <div className={`text-3xl font-black uppercase tracking-[0.2em] ${waveState === 'cleared' ? 'text-green-400' : waveState === 'waiting' ? 'text-yellow-400' : 'text-red-500'}`} style={{ textShadow: `0 0 10px ${waveState === 'cleared' ? '#4ade80' : waveState === 'waiting' ? '#facc15' : '#ef4444'}` }}>
+            WAVE {wave}
+          </div>
+          {waveState === 'waiting' && (
+            <div className="text-white font-mono text-lg mt-1 bg-black/50 px-3 py-1 rounded">
+              PREPARE FOR ATTACK
+            </div>
+          )}
+          {waveState === 'cleared' && (
+            <div className="text-white font-mono text-lg mt-1 bg-black/50 px-3 py-1 rounded">
+              WAVE CLEARED
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Event Warning Overlay */}
       {activeEvent && (
         <div className="absolute top-24 left-1/2 transform -translate-x-1/2 flex flex-col items-center pointer-events-none animate-pulse z-50">
@@ -199,7 +259,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
       )}
 
       {/* Death Screen / Eliminated Overlay */}
-      {me.health <= 0 && (
+      {me.health <= 0 && !spectating && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm z-50 pointer-events-auto animate-in fade-in duration-500">
           <div className="text-center flex flex-col items-center gap-6">
             <h1 className="text-7xl font-black text-red-500 uppercase tracking-[0.5em] mb-4 drop-shadow-[0_0_30px_rgba(255,0,0,0.5)]">
@@ -223,98 +283,126 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
       )}
 
       {/* HUD */}
-      <div className="absolute top-4 left-4 flex flex-col gap-2">
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3" title="Health">
-          <Heart className="text-cyan-400" size={20} />
-          <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
-            <div 
-              className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${Math.max(0, Math.min(100, (me.health / maxHealth) * 100))}%` }}
-            />
+      {!spectating && (
+        <div className="absolute top-4 left-4 flex flex-col gap-2">
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3" title="Health">
+            <Heart className="text-cyan-400" size={20} />
+            <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
+              <div 
+                className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                style={{ width: `${Math.max(0, Math.min(100, (me.health / maxHealth) * 100))}%` }}
+              />
+            </div>
           </div>
-        </div>
-        
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-3">
-          <div className="flex items-center gap-3 text-fuchsia-400" title="Score">
-            <Trophy size={18} />
-            <span className="font-bold text-sm">{me.score}</span>
+          
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-3">
+            <div className="flex items-center gap-3 text-fuchsia-400" title="Score">
+              <Trophy size={18} />
+              <span className="font-bold text-sm">{me.score}</span>
+            </div>
+            <div className="flex items-center gap-3 text-gray-400" title="Game Mode">
+              <Gamepad2 size={18} />
+              <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
+            </div>
+            {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (
+              <div className="flex items-center gap-3 text-yellow-400" title="Lives">
+                <User size={18} />
+                <span className="font-bold text-sm">{me.lives}</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-3 text-gray-400" title="Game Mode">
-            <Gamepad2 size={18} />
-            <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
+          
+          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3 text-yellow-400" title="Weapon">
+            <Swords size={18} />
+            <span className="font-bold text-sm">{me.weapon || 'DEFAULT'}</span>
           </div>
-          {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (
-            <div className="flex items-center gap-3 text-yellow-400" title="Lives">
-              <User size={18} />
-              <span className="font-bold text-sm">{me.lives}</span>
+
+          {(me.bleedingTicks ?? 0) > 0 && (
+            <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse flex items-center justify-center text-red-400" title="Bleeding!">
+              <Droplet size={24} />
             </div>
           )}
+          
         </div>
-        
-        <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3 text-yellow-400" title="Weapon">
-          <Swords size={18} />
-          <span className="font-bold text-sm">{me.weapon || 'DEFAULT'}</span>
-        </div>
+      )}
 
-        {(me.bleedingTicks ?? 0) > 0 && (
-          <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse flex items-center justify-center text-red-400" title="Bleeding!">
-            <Droplet size={24} />
-          </div>
+      {/* Settings, Fullscreen, Admin Panel & Leave Buttons */}
+      <div className="absolute bottom-4 left-4 pointer-events-auto flex gap-2 z-50">
+        {onExit && (
+          <button 
+            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
+            onClick={() => { playSound('click'); onExit(); }}
+            onMouseEnter={() => playSound('hover')}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Leave Game"
+          >
+            <LogOut size={20} />
+          </button>
         )}
-        
-        {/* Settings, Fullscreen, Admin Panel & Leave Buttons */}
-        <div className="pointer-events-auto flex gap-2">
-          {onExit && (
-            <button 
-              className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors"
-              onClick={() => { playSound('click'); onExit(); }}
-              onMouseEnter={() => playSound('hover')}
-              onPointerDown={(e) => e.stopPropagation()}
-              title="Leave Game"
-            >
-              <LogOut size={20} />
-            </button>
-          )}
+        <button 
+          className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+          onClick={() => { playSound('click'); setSettingsOpen(true); }}
+          onMouseEnter={() => playSound('hover')}
+          onPointerDown={(e) => e.stopPropagation()}
+          title="Settings"
+        >
+          <Settings size={20} />
+        </button>
+        <button 
+          className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+          onClick={() => {
+            playSound('click');
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+              });
+            } else {
+              document.exitFullscreen();
+            }
+          }}
+          onMouseEnter={() => playSound('hover')}
+          title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+        </button>
+        {isAdmin && (
           <button 
-            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-            onClick={() => { playSound('click'); setSettingsOpen(true); }}
+            className="bg-red-900/50 backdrop-blur-md border border-red-500/50 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors p-4"
+            onClick={() => { playSound('click'); setAdminOpen(true); }}
             onMouseEnter={() => playSound('hover')}
             onPointerDown={(e) => e.stopPropagation()}
-            title="Settings"
+            title="Admin Panel"
           >
-            <Settings size={20} />
+            <ShieldAlert size={20} />
           </button>
-          <button 
-            className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center justify-center text-cyan-400 hover:bg-cyan-500/10 transition-colors"
-            onClick={() => {
-              playSound('click');
-              if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(err => {
-                  console.error(`Error attempting to enable fullscreen: ${err.message}`);
-                });
-              } else {
-                document.exitFullscreen();
-              }
-            }}
-            onMouseEnter={() => playSound('hover')}
-            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-          </button>
-          {isAdmin && (
-            <button 
-              className="bg-red-900/50 backdrop-blur-md border border-red-500/50 rounded-xl flex items-center justify-center text-red-400 hover:bg-red-500/20 transition-colors p-4"
-              onClick={() => { playSound('click'); setAdminOpen(true); }}
-              onMouseEnter={() => playSound('hover')}
-              onPointerDown={(e) => e.stopPropagation()}
-              title="Admin Panel"
-            >
-              <ShieldAlert size={20} />
-            </button>
-          )}
-        </div>
+        )}
       </div>
+
+      {/* Spectator UI */}
+      {spectating && (
+        <div className="absolute inset-0 flex flex-col items-center justify-between py-10 pointer-events-none z-40">
+          <div className="bg-black/80 backdrop-blur-md border border-red-500/50 px-8 py-4 rounded-2xl shadow-[0_0_30px_rgba(255,0,0,0.3)] text-center animate-in slide-in-from-top-10">
+            <h2 className="text-red-500 font-black text-3xl tracking-[0.2em] uppercase mb-2">Spectator Mode</h2>
+            {spectateTargetId && players[spectateTargetId] ? (
+              <p className="text-white font-mono text-lg">
+                Watching: <span className="text-cyan-400 font-bold">{players[spectateTargetId].nickname}</span>
+              </p>
+            ) : (
+              <p className="text-gray-400 font-mono text-lg">No alive players to spectate.</p>
+            )}
+          </div>
+          
+          <div className="bg-black/50 backdrop-blur-sm px-6 py-3 rounded-full border border-white/10 flex gap-8">
+            <div className="flex items-center gap-2 text-white font-mono text-sm">
+              <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">LMB</span> Prev Player
+            </div>
+            <div className="flex items-center gap-2 text-white font-mono text-sm">
+              <span className="bg-white/20 px-2 py-1 rounded text-xs font-bold">RMB</span> Next Player
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Right Side UI (Leaderboard & Minimap) */}
       <div className="absolute top-4 right-4 flex flex-col gap-4">
@@ -348,17 +436,21 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
             <div className="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-500/20" />
             
             {(() => {
-              if (!me) return null;
+              const radarCenter = spectating && spectateTargetId && players[spectateTargetId] 
+                ? players[spectateTargetId] 
+                : me;
+                
+              if (!radarCenter) return null;
               
               const RADAR_RANGE = 50;
               const RADAR_SIZE = 150;
-              const angle = me.ry || 0;
+              const angle = radarCenter.ry || 0;
               const cos = Math.cos(angle);
               const sin = Math.sin(angle);
 
               return Object.values(players).map((p) => {
-                const dx = p.x - me.x;
-                const dz = p.z - me.z;
+                const dx = p.x - radarCenter.x;
+                const dz = p.z - radarCenter.z;
 
                 const rotX = dx * cos - dz * sin;
                 const rotZ = dx * sin + dz * cos;
@@ -369,7 +461,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                 let renderZ = rotZ;
                 
                 // Clamp to edge of radar if outside range
-                if (dist > RADAR_RANGE && p.id !== myId) {
+                if (dist > RADAR_RANGE && p.id !== radarCenter.id) {
                   renderX = (rotX / dist) * RADAR_RANGE;
                   renderZ = (rotZ / dist) * RADAR_RANGE;
                 }
@@ -377,12 +469,12 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                 const mapX = (renderX / RADAR_RANGE) * (RADAR_SIZE / 2) + (RADAR_SIZE / 2);
                 const mapY = (renderZ / RADAR_RANGE) * (RADAR_SIZE / 2) + (RADAR_SIZE / 2);
 
-                const isClamped = dist > RADAR_RANGE && p.id !== myId;
+                const isClamped = dist > RADAR_RANGE && p.id !== radarCenter.id;
 
                 return (
                   <div
                     key={p.id}
-                    className={`absolute rounded-full -translate-x-1/2 -translate-y-1/2 ${p.id === myId ? 'w-3 h-3 z-10 animate-pulse outline outline-2 outline-white' : isClamped ? 'w-2 h-2 z-0 opacity-100 border border-white/50' : 'w-3 h-3 z-0 border border-white/80'}`}
+                    className={`absolute rounded-full -translate-x-1/2 -translate-y-1/2 ${p.id === radarCenter.id ? 'w-3 h-3 z-10 animate-pulse outline outline-2 outline-white' : isClamped ? 'w-2 h-2 z-0 opacity-100 border border-white/50' : 'w-3 h-3 z-0 border border-white/80'}`}
                     style={{
                       left: `${mapX}px`,
                       top: `${mapY}px`,
@@ -915,6 +1007,30 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                             SET
                           </button>
                         </div>
+                      </div>
+
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5 flex gap-2">
+                        <button
+                          onClick={() => {
+                            useGameStore.getState().socket?.emit('adminRevivePlayer', adminTargetId);
+                          }}
+                          className="flex-1 py-2 bg-green-900/50 hover:bg-green-600 text-white rounded-lg border border-green-500/50 transition-colors font-bold uppercase tracking-widest"
+                        >
+                          Revive Player
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (adminTargetId === myId) {
+                              useGameStore.getState().setSpectating(true);
+                            } else {
+                              // Could add adminForceSpectate if needed, but for now just self
+                              alert('Spectator mode can only be toggled for self currently.');
+                            }
+                          }}
+                          className="flex-1 py-2 bg-blue-900/50 hover:bg-blue-600 text-white rounded-lg border border-blue-500/50 transition-colors font-bold uppercase tracking-widest"
+                        >
+                          Spectate
+                        </button>
                       </div>
 
                       {adminTargetId !== myId && (

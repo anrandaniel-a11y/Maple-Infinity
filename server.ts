@@ -81,6 +81,10 @@ async function startServer() {
     activeEvent: { type: 'tornado' | 'lava' | 'meteorite', endTime: number, targets?: {x: number, z: number}[] } | null;
     eventsEnabled: boolean;
     customConfig?: CustomGameConfig;
+    wave: number;
+    waveEnemiesToSpawn: number;
+    waveState: 'waiting' | 'spawning' | 'cleared';
+    waveStartTime: number;
   }
 
   const TOTAL_MAPS = 3;
@@ -148,7 +152,11 @@ async function startServer() {
       votesToStart: new Set(),
       activeEvent: null,
       eventsEnabled: true,
-      customConfig
+      customConfig,
+      wave: 0,
+      waveEnemiesToSpawn: 0,
+      waveState: 'cleared',
+      waveStartTime: 0
     };
   }
 
@@ -275,75 +283,100 @@ async function startServer() {
         const numPlayers = Object.keys(room.players).length;
         if (numPlayers > 0) {
           if (room.mode === 'pve' && !room.bossActive && !room.bossDefeated) {
-            const totalScore = Object.values(room.players).reduce((acc: number, p: any) => acc + p.score, 0);
-            if (totalScore >= 200) {
-              room.bossActive = true;
-              room.bossPhase = 1;
-              const bossId = 'boss_' + Math.random().toString(36).substring(7);
-              room.bossId = bossId;
-              const spawnX = 0;
-              const spawnZ = 0;
-              const terrainY = getTerrainHeight(spawnX, spawnZ);
-              const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
-              room.entities[bossId] = {
-                id: bossId,
-                type: 'BOSS',
-                x: spawnX,
-                y: Math.max(terrainY, blockY) + 10,
-                z: spawnZ,
-                health: 10000,
-                maxHealth: 10000,
-                targetId: null,
-                lastAttack: 0,
-                isPreparingAttack: false,
-                attackStartTime: 0,
-                invulnerableUntil: 0,
-                attackType: 'SPREAD'
-              };
-              io.to(roomId).emit('entitySpawned', room.entities[bossId]);
-              io.to(roomId).emit('bossSpawned', room.entities[bossId]);
-              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'WARNING: BOSS DETECTED!', color: '#ff0000' });
-            } else {
+            const now = Date.now();
+            if (room.waveState === 'cleared') {
+              room.wave++;
+              if (room.wave > 10) {
+                room.bossActive = true;
+                room.bossPhase = 1;
+                const bossId = 'boss_' + Math.random().toString(36).substring(7);
+                room.bossId = bossId;
+                const spawnX = 0;
+                const spawnZ = 0;
+                const terrainY = getTerrainHeight(spawnX, spawnZ);
+                const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
+                room.entities[bossId] = {
+                  id: bossId,
+                  type: 'BOSS',
+                  x: spawnX,
+                  y: Math.max(terrainY, blockY) + 10,
+                  z: spawnZ,
+                  health: 10000,
+                  maxHealth: 10000,
+                  targetId: null,
+                  lastAttack: 0,
+                  isPreparingAttack: false,
+                  attackStartTime: 0,
+                  invulnerableUntil: 0,
+                  attackType: 'SPREAD'
+                };
+                io.to(roomId).emit('entitySpawned', room.entities[bossId]);
+                io.to(roomId).emit('bossSpawned', room.entities[bossId]);
+                io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'WARNING: BOSS DETECTED!', color: '#ff0000' });
+              } else {
+                room.waveState = 'waiting';
+                room.waveStartTime = now + 5000;
+                room.waveEnemiesToSpawn = room.wave * 5 * numPlayers;
+                io.to(roomId).emit('waveUpdate', { wave: room.wave, waveState: room.waveState });
+                io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: `WAVE ${room.wave} STARTING IN 5 SECONDS...`, color: '#ffff00' });
+              }
+            } else if (room.waveState === 'waiting' && now >= room.waveStartTime) {
+              room.waveState = 'spawning';
+              io.to(roomId).emit('waveUpdate', { wave: room.wave, waveState: room.waveState });
+              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: `WAVE ${room.wave} STARTED!`, color: '#ff0000' });
+            } else if (room.waveState === 'spawning') {
               const maxEntities = room.difficulty === 'easy' ? 5 : room.difficulty === 'normal' ? 10 : room.difficulty === 'hard' ? 20 : 30;
               const spawnChance = room.difficulty === 'easy' ? 0.2 : room.difficulty === 'normal' ? 0.5 : room.difficulty === 'hard' ? 0.8 : 1.0;
-              if (Object.keys(room.entities).length < numPlayers * maxEntities) {
+              
+              if (room.waveEnemiesToSpawn > 0 && Object.keys(room.entities).length < numPlayers * maxEntities) {
                 if (Math.random() < spawnChance) {
+                  room.waveEnemiesToSpawn--;
                   const id = Math.random().toString(36).substring(7);
-                  const rand = Math.random();
-                  const type = rand < 0.33 ? 'LIGHTBULB' : rand < 0.66 ? 'DRONE' : 'MECH';
+                  
+                  let type = 'LIGHTBULB';
+                  const types = ['LIGHTBULB', 'DRONE', 'SWARMER'];
+                  if (room.wave >= 2) types.push('MECH', 'LAVABOT');
+                  if (room.wave >= 3) types.push('SNIPER');
+                  if (room.wave >= 4) types.push('TANK');
+                  if (room.wave >= 5) types.push('HEALER');
+                  type = types[Math.floor(Math.random() * types.length)];
+
                   const angle = Math.random() * Math.PI * 2;
                   const dist = 80 + Math.random() * 20;
                   const x = Math.cos(angle) * dist;
                   const z = Math.sin(angle) * dist;
                   const terrainY = getTerrainHeight(x, z);
                   const blockY = getHighestBlockY(room.volume, x, z);
+                  
+                  let health = 50;
+                  let y = Math.max(terrainY, blockY) + 60;
+                  
+                  if (type === 'LIGHTBULB') { health = 50; y = Math.max(terrainY, blockY) + 60; }
+                  else if (type === 'DRONE') { health = 100; y = Math.max(terrainY, blockY) + 60; }
+                  else if (type === 'MECH') { health = 200; y = Math.max(terrainY, blockY) + 0.4; }
+                  else if (type === 'LAVABOT') { health = 150; y = Math.max(terrainY, blockY) + 20; }
+                  else if (type === 'SNIPER') { health = 80; y = Math.max(terrainY, blockY) + 0.4; }
+                  else if (type === 'TANK') { health = 500; y = Math.max(terrainY, blockY) + 0.4; }
+                  else if (type === 'SWARMER') { health = 30; y = Math.max(terrainY, blockY) + 10; }
+                  else if (type === 'HEALER') { health = 120; y = Math.max(terrainY, blockY) + 30; }
+
                   room.entities[id] = {
                     id,
                     type,
                     x,
-                    y: type === 'MECH' ? Math.max(terrainY, blockY) + 0.4 : Math.max(terrainY, blockY) + 60,
+                    y,
                     z,
-                    health: type === 'LIGHTBULB' ? 50 : type === 'DRONE' ? 100 : 200,
+                    health,
                     targetId: null,
                     lastAttack: 0
                   };
                   io.to(roomId).emit('entitySpawned', room.entities[id]);
                 }
+              } else if (room.waveEnemiesToSpawn <= 0 && Object.keys(room.entities).length === 0) {
+                room.waveState = 'cleared';
+                io.to(roomId).emit('waveUpdate', { wave: room.wave, waveState: room.waveState });
+                io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: `WAVE ${room.wave} CLEARED!`, color: '#00ff00' });
               }
-            }
-          } else if (room.mode === 'pve' && room.bossId && room.entities[room.bossId]) {
-            const boss = room.entities[room.bossId];
-            const now = Date.now();
-            if (room.bossPhase === 1 && boss.health <= boss.maxHealth * 0.66) {
-              room.bossPhase = 2;
-              boss.invulnerableUntil = now + 5000;
-              spawnBossMinions(room, roomId, 10);
-              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'BOSS WAVE 2 INCOMING!', color: '#ff8800' });
-            } else if (room.bossPhase === 2 && boss.health <= boss.maxHealth * 0.33) {
-              room.bossPhase = 3;
-              boss.invulnerableUntil = now + 5000;
-              spawnBossMinions(room, roomId, 20);
-              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'BOSS FINAL WAVE!', color: '#ff0000' });
             }
           } else if (room.mode === 'custom' && room.customConfig && room.customConfig.enemyBots > 0) {
             const maxEntities = room.customConfig.enemyBots;
@@ -370,6 +403,22 @@ async function startServer() {
                 };
                 io.to(roomId).emit('entitySpawned', room.entities[id]);
               }
+            }
+          }
+
+          if (room.bossId && room.entities[room.bossId]) {
+            const boss = room.entities[room.bossId];
+            const now = Date.now();
+            if (room.bossPhase === 1 && boss.health <= boss.maxHealth * 0.66) {
+              room.bossPhase = 2;
+              boss.invulnerableUntil = now + 5000;
+              spawnBossMinions(room, roomId, 10);
+              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'BOSS WAVE 2 INCOMING!', color: '#ff8800' });
+            } else if (room.bossPhase === 2 && boss.health <= boss.maxHealth * 0.33) {
+              room.bossPhase = 3;
+              boss.invulnerableUntil = now + 5000;
+              spawnBossMinions(room, roomId, 20);
+              io.to(roomId).emit('chatMessage', { sender: 'SYSTEM', text: 'BOSS FINAL WAVE!', color: '#ff0000' });
             }
           }
         }
@@ -442,7 +491,7 @@ async function startServer() {
         io.to(roomId).volatile.emit('playersMoved', updates);
       }
 
-      if (room.mode === 'pve') {
+      if (Object.keys(room.entities).length > 0) {
         const entityUpdates: any[] = [];
         for (const entity of Object.values(room.entities)) {
           let closestPlayer: any = null;
@@ -549,6 +598,162 @@ async function startServer() {
                 }
               } else {
                 entity.isPreparingAttack = false;
+              }
+            } else if (entity.type === 'LAVABOT') {
+              if (dist > 30) {
+                const speed = room.difficulty === 'easy' ? 4 : room.difficulty === 'normal' ? 8 : room.difficulty === 'hard' ? 12 : 16;
+                entity.x += (dx / dist) * speed * 0.033;
+                entity.y += (dy / dist) * speed * 0.033;
+                entity.z += (dz / dist) * speed * 0.033;
+              }
+              
+              const attackCooldown = room.difficulty === 'easy' ? 6000 : room.difficulty === 'normal' ? 4000 : room.difficulty === 'hard' ? 2500 : 1500;
+              if (dist < 50 && now - entity.lastAttack > attackCooldown) {
+                if (!entity.isPreparingAttack) {
+                  entity.isPreparingAttack = true;
+                  entity.attackStartTime = now;
+                } else if (now - entity.attackStartTime > 1000) {
+                  entity.isPreparingAttack = false;
+                  entity.lastAttack = now;
+                  
+                  if (closestPlayer) {
+                    const targets = [{ x: closestPlayer.x, z: closestPlayer.z }];
+                    room.activeEvent = { type: 'lava', endTime: now + 5000, targets };
+                    io.to(roomId).emit('specialEvent', { type: 'lava', duration: 5000, startTime: now, targets });
+                  }
+                }
+              } else {
+                entity.isPreparingAttack = false;
+              }
+            } else if (entity.type === 'SNIPER') {
+              if (dist < 60) {
+                const speed = room.difficulty === 'easy' ? 4 : room.difficulty === 'normal' ? 8 : room.difficulty === 'hard' ? 12 : 16;
+                entity.x -= (dx / dist) * speed * 0.033;
+                entity.y += (dy / dist) * speed * 0.033;
+                entity.z -= (dz / dist) * speed * 0.033;
+              } else if (dist > 80) {
+                const speed = room.difficulty === 'easy' ? 4 : room.difficulty === 'normal' ? 8 : room.difficulty === 'hard' ? 12 : 16;
+                entity.x += (dx / dist) * speed * 0.033;
+                entity.y += (dy / dist) * speed * 0.033;
+                entity.z += (dz / dist) * speed * 0.033;
+              }
+              
+              const attackCooldown = room.difficulty === 'easy' ? 5000 : room.difficulty === 'normal' ? 3500 : room.difficulty === 'hard' ? 2000 : 1000;
+              if (dist < 100 && now - entity.lastAttack > attackCooldown) {
+                if (!entity.isPreparingAttack) {
+                  entity.isPreparingAttack = true;
+                  entity.attackStartTime = now;
+                  entity.attackTarget = [closestPlayer.x, closestPlayer.y, closestPlayer.z];
+                  io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to: entity.attackTarget, color: '#ff00ff55' });
+                } else if (now - entity.attackStartTime > 1500) {
+                  entity.isPreparingAttack = false;
+                  entity.lastAttack = now;
+                  const to = entity.attackTarget;
+                  io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to, color: '#ff00ff' });
+                  
+                  for (const targetId in room.players) {
+                    if (checkHit(room.players[targetId], [entity.x, entity.y, entity.z], to)) {
+                      const damage = room.difficulty === 'easy' ? 50 : room.difficulty === 'normal' ? 80 : room.difficulty === 'hard' ? 120 : 180;
+                      applyDamage(roomId, targetId, 'entity', damage);
+                    }
+                  }
+                }
+              } else {
+                entity.isPreparingAttack = false;
+              }
+            } else if (entity.type === 'TANK') {
+              if (dist > 3) {
+                const speed = room.difficulty === 'easy' ? 4 : room.difficulty === 'normal' ? 6 : room.difficulty === 'hard' ? 10 : 14;
+                const distXZ = Math.sqrt(dx*dx + dz*dz);
+                if (distXZ > 0) {
+                  entity.x += (dx / distXZ) * speed * 0.033;
+                  entity.z += (dz / distXZ) * speed * 0.033;
+                }
+                const terrainY = getTerrainHeight(entity.x, entity.z);
+                const blockY = getHighestBlockY(room.volume, entity.x, entity.z);
+                entity.y = Math.max(terrainY, blockY) + 0.4;
+              }
+              
+              const attackCooldown = room.difficulty === 'easy' ? 3000 : room.difficulty === 'normal' ? 2000 : room.difficulty === 'hard' ? 1200 : 800;
+              if (dist < 5 && now - entity.lastAttack > attackCooldown) {
+                if (!entity.isPreparingAttack) {
+                  entity.isPreparingAttack = true;
+                  entity.attackStartTime = now;
+                } else if (now - entity.attackStartTime > 600) {
+                  entity.isPreparingAttack = false;
+                  entity.lastAttack = now;
+                  
+                  if (closestPlayer) {
+                    const currentDist = Math.sqrt((closestPlayer.x - entity.x)**2 + (closestPlayer.y - entity.y)**2 + (closestPlayer.z - entity.z)**2);
+                    if (currentDist < 6) {
+                      const damage = room.difficulty === 'easy' ? 40 : room.difficulty === 'normal' ? 70 : room.difficulty === 'hard' ? 100 : 150;
+                      applyDamage(roomId, closestPlayer.id, 'entity', damage);
+                    }
+                  }
+                }
+              } else {
+                entity.isPreparingAttack = false;
+              }
+            } else if (entity.type === 'SWARMER') {
+              if (dist < 3) {
+                io.to(roomId).emit('explosion', { x: entity.x, y: entity.y, z: entity.z, radius: 5 });
+                for (const p of Object.values(room.players)) {
+                  const pd = Math.sqrt((p.x - entity.x)**2 + (p.y - entity.y)**2 + (p.z - entity.z)**2);
+                  if (pd < 5) {
+                    const damage = room.difficulty === 'easy' ? 20 : room.difficulty === 'normal' ? 40 : room.difficulty === 'hard' ? 60 : 80;
+                    applyDamage(roomId, p.id, 'entity', damage);
+                  }
+                }
+                delete room.entities[entity.id];
+                io.to(roomId).emit('entityDestroyed', entity.id);
+                continue;
+              } else {
+                const speed = room.difficulty === 'easy' ? 15 : room.difficulty === 'normal' ? 25 : room.difficulty === 'hard' ? 35 : 45;
+                entity.x += (dx / dist) * speed * 0.033;
+                entity.y += (dy / dist) * speed * 0.033;
+                entity.z += (dz / dist) * speed * 0.033;
+              }
+            } else if (entity.type === 'HEALER') {
+              let healTarget: any = null;
+              let minBotDist = Infinity;
+              for (const other of Object.values(room.entities)) {
+                if (other.id !== entity.id && other.type !== 'BOSS') {
+                  const maxH = other.type === 'LIGHTBULB' ? 50 : other.type === 'DRONE' ? 100 : other.type === 'MECH' ? 200 : other.type === 'TANK' ? 500 : 100;
+                  if (other.health < maxH) {
+                    const bd = Math.sqrt((other.x - entity.x)**2 + (other.y - entity.y)**2 + (other.z - entity.z)**2);
+                    if (bd < minBotDist) {
+                      minBotDist = bd;
+                      healTarget = other;
+                    }
+                  }
+                }
+              }
+
+              if (healTarget) {
+                const hdx = healTarget.x - entity.x;
+                const hdy = healTarget.y - entity.y;
+                const hdz = healTarget.z - entity.z;
+                if (minBotDist > 15) {
+                  const speed = room.difficulty === 'easy' ? 6 : room.difficulty === 'normal' ? 10 : room.difficulty === 'hard' ? 15 : 20;
+                  entity.x += (hdx / minBotDist) * speed * 0.033;
+                  entity.y += (hdy / minBotDist) * speed * 0.033;
+                  entity.z += (hdz / minBotDist) * speed * 0.033;
+                }
+
+                const healCooldown = room.difficulty === 'easy' ? 3000 : room.difficulty === 'normal' ? 2000 : room.difficulty === 'hard' ? 1000 : 500;
+                if (minBotDist < 20 && now - entity.lastAttack > healCooldown) {
+                  entity.lastAttack = now;
+                  const healAmount = room.difficulty === 'easy' ? 20 : room.difficulty === 'normal' ? 40 : room.difficulty === 'hard' ? 60 : 80;
+                  healTarget.health += healAmount;
+                  io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to: [healTarget.x, healTarget.y, healTarget.z], color: '#00ff00' });
+                }
+              } else {
+                if (dist > 30) {
+                  const speed = room.difficulty === 'easy' ? 4 : room.difficulty === 'normal' ? 6 : room.difficulty === 'hard' ? 10 : 15;
+                  entity.x += (dx / dist) * speed * 0.033;
+                  entity.y += (dy / dist) * speed * 0.033;
+                  entity.z += (dz / dist) * speed * 0.033;
+                }
               }
             } else if (entity.type === 'BOSS') {
               if (entity.invulnerableUntil && now < entity.invulnerableUntil) {
@@ -825,7 +1030,9 @@ async function startServer() {
       votesToStart: Array.from(room.votesToStart),
       activeEvent: room.activeEvent ? { type: room.activeEvent.type, duration: room.activeEvent.endTime - Date.now(), startTime: room.activeEvent.endTime - 30000, targets: room.activeEvent.targets } : null,
       eventsEnabled: room.eventsEnabled,
-      customConfig: room.customConfig
+      customConfig: room.customConfig,
+      wave: room.wave,
+      waveState: room.waveState
     });
 
     // Broadcast new player to others
@@ -1026,13 +1233,26 @@ async function startServer() {
         const terrainY = getTerrainHeight(x, z);
         const blockY = getHighestBlockY(r.volume, x, z);
         
+        let y = Math.max(terrainY, blockY) + 40;
+        let defaultHealth = 200;
+        
+        if (type === 'LIGHTBULB') { y = Math.max(terrainY, blockY) + 60; defaultHealth = 50; }
+        else if (type === 'DRONE') { y = Math.max(terrainY, blockY) + 60; defaultHealth = 100; }
+        else if (type === 'MECH') { y = Math.max(terrainY, blockY) + 0.4; defaultHealth = 200; }
+        else if (type === 'LAVABOT') { y = Math.max(terrainY, blockY) + 20; defaultHealth = 150; }
+        else if (type === 'SNIPER') { y = Math.max(terrainY, blockY) + 0.4; defaultHealth = 80; }
+        else if (type === 'TANK') { y = Math.max(terrainY, blockY) + 0.4; defaultHealth = 500; }
+        else if (type === 'SWARMER') { y = Math.max(terrainY, blockY) + 10; defaultHealth = 30; }
+        else if (type === 'HEALER') { y = Math.max(terrainY, blockY) + 30; defaultHealth = 120; }
+        else if (type === 'BOSS') { y = Math.max(terrainY, blockY) + 10; defaultHealth = 10000; }
+
         r.entities[id] = {
           id,
           type,
           x,
-          y: type === 'MECH' ? Math.max(terrainY, blockY) + 0.4 : Math.max(terrainY, blockY) + 40,
+          y,
           z,
-          health: health || (type === 'LIGHTBULB' ? 50 : type === 'DRONE' ? 100 : type === 'BOSS' ? 10000 : 200),
+          health: health || defaultHealth,
           maxHealth: type === 'BOSS' ? (health || 10000) : undefined,
           targetId: tId,
           lastAttack: 0,
@@ -1043,6 +1263,10 @@ async function startServer() {
         };
         io.to(rId).emit('entitySpawned', r.entities[id]);
         if (type === 'BOSS') {
+          r.bossActive = true;
+          r.bossId = id;
+          r.bossPhase = 1;
+          r.bossDefeated = false;
           io.to(rId).emit('bossSpawned', r.entities[id]);
           io.to(rId).emit('chatMessage', { sender: 'SYSTEM', text: 'WARNING: ADMIN SPAWNED BOSS!', color: '#ff0000' });
         }
@@ -1054,6 +1278,44 @@ async function startServer() {
         }
       } else {
         spawnBotForTarget(targetId || socket.id);
+      }
+    });
+
+    socket.on('adminRevivePlayer', (targetId) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+
+      const reviveTarget = (tId: string) => {
+        const target = r.players[tId];
+        if (target && target.health <= 0) {
+          target.health = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
+          target.bleedingTicks = 0;
+          if (target.lives !== undefined && target.lives <= 0) {
+            target.lives = 1;
+          }
+          
+          const spread = r.mode === 'pve' ? 100 : 2000;
+          const spawnX = (Math.random() - 0.5) * spread;
+          const spawnZ = (Math.random() - 0.5) * spread;
+          const terrainY = getTerrainHeight(spawnX, spawnZ);
+          const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
+          target.x = spawnX;
+          target.y = Math.max(terrainY, blockY) + 20;
+          target.z = spawnZ;
+          
+          io.to(rId).emit('playerRespawned', target);
+          io.to(rId).emit('chatMessage', { sender: 'SYSTEM', text: `${target.nickname} was revived by admin.`, color: '#00ff00' });
+        }
+      };
+
+      if (targetId === 'all') {
+        for (const tId in r.players) {
+          reviveTarget(tId);
+        }
+      } else {
+        reviveTarget(targetId);
       }
     });
 

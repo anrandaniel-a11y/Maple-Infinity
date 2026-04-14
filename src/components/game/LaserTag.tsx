@@ -9,6 +9,7 @@ import { RemotePlayer } from './RemotePlayer';
 import { UI } from './UI';
 import { Entities } from './Entities';
 import { SpecialEvents } from './SpecialEvents';
+import { WeaponModel } from './WeaponModel';
 
 import { PerformanceMonitor, Stats, AdaptiveDpr, BakeShadows, Text } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
@@ -22,7 +23,7 @@ function GameSettings() {
   const fpsLimit = useGameStore((state) => state.fpsLimit);
 
   useEffect(() => {
-    camera.far = renderDistance;
+    camera.far = renderDistance + 600;
     camera.updateProjectionMatrix();
   }, [renderDistance, camera]);
 
@@ -49,8 +50,6 @@ function GameSettings() {
 
   return null;
 }
-
-import { WeaponModel } from './WeaponModel';
 
 const laserGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
 
@@ -279,7 +278,7 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
       {gameState === 'lobby' && <TeamLobby />}
       <Canvas 
         shadows={enableLighting}
-        camera={{ fov: 75, near: 0.01, far: renderDistance }} 
+        camera={{ fov: 75, near: 0.01, far: renderDistance + 600 }} 
         dpr={dynamicResolution ? dpr : 1}
         frameloop={fpsLimit > 0 ? 'demand' : 'always'}
         gl={{ powerPreference: "high-performance", antialias: false }}
@@ -294,13 +293,6 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
         )}
         <color attach="background" args={['#050505']} />
         
-        {enableLighting && ultraVisuals && (
-          <fogExp2 attach="fog" args={['#050505', 0.006]} />
-        )}
-        {enableLighting && !ultraVisuals && (
-          <fog attach="fog" args={['#050505', 20, renderDistance]} />
-        )}
-
         {enableLighting && (
           <>
             <ambientLight intensity={0.4} color="#404060" />

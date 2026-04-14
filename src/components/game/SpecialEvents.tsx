@@ -1,8 +1,10 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useEffect, useRef, useMemo, useState } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Sparkles, Trail } from '@react-three/drei';
 import { useGameStore } from '../../store/gameStore';
 import { useFrustumCulling } from './Entities';
+import { generateVolume, getTerrainHeight, getHighestBlockY } from '../../utils/mapGen';
 
 function Tornado() {
   const ref = useRef<THREE.Group>(null);
@@ -46,12 +48,10 @@ function Tornado() {
     // Damage detection
     if (myId && players[myId] && players[myId].health > 0) {
       const me = players[myId];
-      const dist = Math.sqrt((me.x - position.x)**2 + (me.z - position.z)**2);
-      if (dist < 20) {
-        // Apply damage every frame? No, throttle it.
-        // We can just send a damage event to the server.
-        // But doing it every frame is bad.
-        // Let's use a ref for last damage time.
+      const dist2D = Math.sqrt((me.x - position.x)**2 + (me.z - position.z)**2);
+      const distY = Math.abs(me.y - position.y);
+      
+      if (dist2D < 20 && distY < 40) { // Tornado is 40 units tall
         const now = Date.now();
         if (!ref.current.userData.lastDamage || now - ref.current.userData.lastDamage > 1000) {
           ref.current.userData.lastDamage = now;
@@ -65,10 +65,25 @@ function Tornado() {
 
   return (
     <group ref={ref}>
-      <mesh castShadow={enableLighting} position={[0, 20, 0]}>
-        <cylinderGeometry args={[15, 2, 40, 16]} />
-        {enableLighting ? <meshStandardMaterial color="#555555" transparent opacity={0.8} /> : <meshBasicMaterial color="#555555" transparent opacity={0.8} />}
-      </mesh>
+      {/* Tornado Funnel made of multiple rings */}
+      {Array.from({ length: 15 }).map((_, i) => {
+        const height = 40;
+        const y = (i / 15) * height;
+        const radius = 2 + (y / height) * 13;
+        return (
+          <mesh key={i} castShadow={enableLighting} position={[0, y, 0]} rotation={[Math.random(), Math.random(), Math.random()]}>
+            <torusGeometry args={[radius, radius * 0.3, 8, 16]} />
+            {enableLighting ? (
+              <meshStandardMaterial color="#444444" roughness={0.9} metalness={0.1} transparent opacity={0.6} />
+            ) : (
+              <meshBasicMaterial color="#444444" transparent opacity={0.6} />
+            )}
+          </mesh>
+        );
+      })}
+      {/* Debris particles */}
+      <Sparkles count={200} scale={[30, 40, 30]} position={[0, 20, 0]} color="#222222" size={6} speed={2} opacity={0.8} />
+      <Sparkles count={100} scale={[20, 40, 20]} position={[0, 20, 0]} color="#555555" size={4} speed={3} opacity={0.6} />
     </group>
   );
 }
@@ -76,6 +91,7 @@ function Tornado() {
 function LavaSpots() {
   const seed = useGameStore(state => state.seed);
   const activeEvent = useGameStore(state => state.activeEvent);
+  const [placedSpots, setPlacedSpots] = useState<any[]>([]);
   
   const spots = useMemo(() => {
     let s = seed + (activeEvent?.startTime || 0);
@@ -85,15 +101,40 @@ function LavaSpots() {
     };
     const targets = activeEvent?.targets && activeEvent.targets.length > 0 ? activeEvent.targets : [{x: 0, z: 0}];
     
-    return Array.from({ length: 20 }).map((_, i) => {
+    return Array.from({ length: 30 }).map((_, i) => {
       const target = targets[i % targets.length];
+      
+      // Parkour course style: scatter them but keep a minimum distance from the target
+      let dx = (random() - 0.5) * 150;
+      let dz = (random() - 0.5) * 150;
+      
+      // Ensure it's not directly on the player
+      if (Math.abs(dx) < 15) dx = 15 * Math.sign(dx || 1);
+      if (Math.abs(dz) < 15) dz = 15 * Math.sign(dz || 1);
+
       return {
-        x: target.x + (random() - 0.5) * 80,
-        z: target.z + (random() - 0.5) * 80,
-        radius: 10 + random() * 10
+        x: target.x + dx,
+        z: target.z + dz,
+        radius: 8 + random() * 10
       };
     });
   }, [seed, activeEvent?.startTime, activeEvent?.targets]);
+
+  useEffect(() => {
+    const volume = generateVolume(seed);
+    
+    const newSpots = spots.map(spot => {
+      const terrainY = getTerrainHeight(spot.x, spot.z);
+      const blockY = getHighestBlockY(volume, spot.x, spot.z);
+      
+      return {
+        ...spot,
+        y: Math.max(terrainY, blockY) + 0.1
+      };
+    });
+    
+    setPlacedSpots(newSpots);
+  }, [spots, seed]);
 
   const myId = useGameStore(state => state.myId);
   const players = useGameStore(state => state.players);
@@ -104,9 +145,12 @@ function LavaSpots() {
     if (myId && players[myId] && players[myId].health > 0) {
       const me = players[myId];
       let inLava = false;
-      for (const spot of spots) {
-        const dist = Math.sqrt((me.x - spot.x)**2 + (me.z - spot.z)**2);
-        if (dist < spot.radius) {
+      for (const spot of placedSpots) {
+        const dist2D = Math.sqrt((me.x - spot.x)**2 + (me.z - spot.z)**2);
+        const distY = Math.abs(me.y - spot.y);
+        
+        // Only damage if touching (within radius and very close vertically)
+        if (dist2D < spot.radius && distY < 2.0) {
           inLava = true;
           break;
         }
@@ -124,13 +168,26 @@ function LavaSpots() {
 
   const enableLighting = useGameStore(state => state.enableLighting);
 
+  const geometry = useMemo(() => new THREE.CircleGeometry(1, 32), []);
+  const materialStd = useMemo(() => new THREE.MeshStandardMaterial({ color: "#ff3300", emissive: "#ff4400", emissiveIntensity: 2, roughness: 0.2, metalness: 0.8 }), []);
+  const materialBasic = useMemo(() => new THREE.MeshBasicMaterial({ color: "#ff3300" }), []);
+  const material = enableLighting ? materialStd : materialBasic;
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      materialStd.dispose();
+      materialBasic.dispose();
+    };
+  }, [geometry, materialStd, materialBasic]);
+
   return (
     <group>
-      {spots.map((spot, i) => (
-        <mesh receiveShadow={enableLighting} key={i} position={[spot.x, 0.1, spot.z]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[spot.radius, 32]} />
-          {enableLighting ? <meshStandardMaterial color="#ff3300" emissive="#ff3300" emissiveIntensity={0.5} /> : <meshBasicMaterial color="#ff3300" />}
-        </mesh>
+      {placedSpots.map((spot, i) => (
+        <group key={i} position={[spot.x, spot.y, spot.z]}>
+          <mesh receiveShadow={enableLighting} rotation={[-Math.PI / 2, 0, 0]} scale={[spot.radius, spot.radius, 1]} geometry={geometry} material={material} />
+          <Sparkles count={Math.floor(spot.radius * 5)} scale={[spot.radius * 2, 2, spot.radius * 2]} position={[0, 1, 0]} color="#ffaa00" size={4} speed={0.4} opacity={0.8} />
+        </group>
       ))}
     </group>
   );
@@ -147,16 +204,37 @@ function Meteorites() {
   const meteors = useRef<any[]>([]);
   const lastSpawnTime = useRef(0);
 
-  const geometry = useMemo(() => new THREE.SphereGeometry(2, 16, 16), []);
-  const materialBasic = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ff8800' }), []);
-  const materialStd = useMemo(() => new THREE.MeshStandardMaterial({ color: '#ff8800', emissive: '#ff8800', emissiveIntensity: 0.5 }), []);
+  const geometry = useMemo(() => {
+    const geo = new THREE.DodecahedronGeometry(3, 1);
+    // Add some noise to make it look like a rock
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setXYZ(
+        i,
+        pos.getX(i) * (0.8 + Math.random() * 0.4),
+        pos.getY(i) * (0.8 + Math.random() * 0.4),
+        pos.getZ(i) * (0.8 + Math.random() * 0.4)
+      );
+    }
+    geo.computeVertexNormals();
+    return geo;
+  }, []);
+  
+  const materialBasic = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ff4400' }), []);
+  const materialStd = useMemo(() => new THREE.MeshStandardMaterial({ 
+    color: '#331100', 
+    emissive: '#ff4400', 
+    emissiveIntensity: 0.8,
+    roughness: 0.9,
+    metalness: 0.2
+  }), []);
   const material = enableLighting ? materialStd : materialBasic;
 
   useEffect(() => {
     return () => {
       for (const m of meteors.current) {
-        if (m.mesh) {
-          groupRef.current?.remove(m.mesh);
+        if (m.group) {
+          groupRef.current?.remove(m.group);
         }
       }
       geometry.dispose();
@@ -191,6 +269,7 @@ function Meteorites() {
         y: 200,
         targetY: 0,
         speed: 50 + random() * 50,
+        group: null,
         mesh: null
       });
     }
@@ -200,21 +279,26 @@ function Meteorites() {
       const m = meteors.current[i];
       m.y -= m.speed * delta;
       
-      if (m.mesh) {
-        m.mesh.position.set(m.x, m.y, m.z);
+      if (m.group) {
+        m.group.position.set(m.x, m.y, m.z);
+        if (m.mesh) {
+          m.mesh.rotation.x += delta * 2;
+          m.mesh.rotation.y += delta * 3;
+        }
       }
 
       if (m.y <= m.targetY) {
         // Explode
         if (myId && players[myId] && players[myId].health > 0) {
           const me = players[myId];
-          const dist = Math.sqrt((me.x - m.x)**2 + (me.z - m.z)**2);
-          if (dist < 30) {
+          const dist2D = Math.sqrt((me.x - m.x)**2 + (me.z - m.z)**2);
+          const distY = Math.abs(me.y - m.y);
+          if (dist2D < 30 && distY < 15) {
             socket?.emit('takeEnvironmentalDamage', 40);
           }
         }
-        if (m.mesh) {
-          groupRef.current.remove(m.mesh);
+        if (m.group) {
+          groupRef.current.remove(m.group);
         }
       } else {
         nextMeteors.push(m);
@@ -223,11 +307,25 @@ function Meteorites() {
     
     // Add new meshes
     for (const m of nextMeteors) {
-      if (!m.mesh) {
+      if (!m.group) {
+        const group = new THREE.Group();
+        group.position.set(m.x, m.y, m.z);
+        
         const mesh = new THREE.Mesh(geometry, material);
         mesh.castShadow = enableLighting;
-        mesh.position.set(m.x, m.y, m.z);
-        groupRef.current.add(mesh);
+        group.add(mesh);
+        
+        // Add trail particles (simulated with a simple mesh or we could use Sparkles but Sparkles doesn't easily trail dynamically without complex setup, so we just attach it to the group)
+        // Actually, Sparkles inside the group will move with it!
+        // Wait, Sparkles in a moving group might look weird if they don't leave a trail. 
+        // We'll just add a glowing core.
+        const glowGeo = new THREE.SphereGeometry(3.5, 8, 8);
+        const glowMat = new THREE.MeshBasicMaterial({ color: '#ffaa00', transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending });
+        const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+        group.add(glowMesh);
+
+        groupRef.current.add(group);
+        m.group = group;
         m.mesh = mesh;
       }
     }
