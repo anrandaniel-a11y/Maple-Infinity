@@ -121,6 +121,8 @@ interface GameStore {
   mapIndex: number;
   seed: number;
   envMap: THREE.Texture | null;
+  customCursorUrl: string | null;
+  hudPositions: Record<string, { x: number, y: number, scale: number }>;
   gameMode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom';
   difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
   gameState: 'lobby' | 'playing';
@@ -158,6 +160,8 @@ interface GameStore {
   setShadowQuality: (val: 'low' | 'medium' | 'high') => void;
   setUltraVisuals: (val: boolean) => void;
   setEnvMap: (envMap: THREE.Texture | null) => void;
+  setCustomCursorUrl: (url: string | null) => void;
+  setHudPositions: (positions: Record<string, { x: number, y: number, scale: number }>) => void;
   boss: { id: string, health: number, maxHealth: number } | null;
   wave: number;
   waveState: 'waiting' | 'spawning' | 'cleared';
@@ -205,6 +209,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   mapIndex: 0,
   seed: 0,
   envMap: null,
+  customCursorUrl: null,
+  hudPositions: (() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('hudPositions');
+        if (saved) return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return {
+      healthBar: { x: 50, y: 95, scale: 1 },
+      weaponInfo: { x: 95, y: 90, scale: 1 },
+      minimap: { x: 5, y: 5, scale: 1 },
+      killFeed: { x: 95, y: 5, scale: 1 },
+      leaderboard: { x: 5, y: 30, scale: 1 },
+      chat: { x: 5, y: 70, scale: 1 },
+    };
+  })(),
   gameMode: 'pvp',
   difficulty: 'normal',
   gameState: 'playing',
@@ -248,6 +269,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setShadowQuality: (val) => set({ shadowQuality: val }),
   setUltraVisuals: (val) => set({ ultraVisuals: val }),
   setEnvMap: (val) => set({ envMap: val }),
+  setCustomCursorUrl: (val) => set({ customCursorUrl: val }),
+  setHudPositions: (positions) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hudPositions', JSON.stringify(positions));
+    }
+    set({ hudPositions: positions });
+  },
 
   boss: null,
   wave: 0,

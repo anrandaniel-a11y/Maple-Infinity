@@ -27,12 +27,19 @@ export function Login({ onLogin, onClose }: LoginProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-md">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/80 backdrop-blur-md"
+    >
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="w-full max-w-md p-8 rounded-3xl bg-black/80 backdrop-blur-xl border border-white/10 shadow-[0_0_50px_rgba(0,255,255,0.2)] relative overflow-hidden"
+        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        className="w-full max-w-md p-8 rounded-3xl bg-black/90 border border-white/10 shadow-[0_0_50px_rgba(0,255,255,0.2)] relative overflow-hidden will-change-transform"
       >
         <button 
           onClick={onClose} 
@@ -123,6 +130,6 @@ export function Login({ onLogin, onClose }: LoginProps) {
           </button>
         </form>
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

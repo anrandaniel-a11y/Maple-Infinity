@@ -242,6 +242,8 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
 
   const [isMobile, setIsMobile] = useState(false);
 
+  const customCursorUrl = useGameStore((state) => state.customCursorUrl);
+
   useEffect(() => {
     setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
     connect(nickname, isAdmin, gameMode, difficulty);
@@ -274,7 +276,10 @@ export function LaserTag({ nickname, isAdmin, gameMode, difficulty, onExit }: { 
   }
 
   return (
-    <div className="w-full h-screen bg-black relative overflow-hidden touch-none">
+    <div 
+      className="w-full h-screen bg-black relative overflow-hidden touch-none"
+      style={{ cursor: customCursorUrl ? `url(${customCursorUrl}), auto` : undefined }}
+    >
       {gameState === 'lobby' && <TeamLobby />}
       <Canvas 
         shadows={enableLighting}

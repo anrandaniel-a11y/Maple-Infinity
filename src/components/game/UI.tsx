@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { playSound } from '../../utils/audio';
 import { MobileControls } from './MobileControls';
 import { Chatbot } from './Chatbot';
+import { HudDraggable } from './HudDraggable';
 
 export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: boolean, onExit?: () => void }) {
   const myId = useGameStore((state) => state.myId);
@@ -47,7 +48,12 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
   const [adminTargetId, setAdminTargetId] = useState<string>('');
   const [adminTargetSpeed, setAdminTargetSpeed] = useState<number>(50);
   const [adminTargetHealth, setAdminTargetHealth] = useState<number>(500);
+  const [adminTargetDamageMultiplier, setAdminTargetDamageMultiplier] = useState<number>(1);
   const [adminTeleportDestId, setAdminTeleportDestId] = useState<string>('');
+  
+  const [adminBotSpeed, setAdminBotSpeed] = useState<number>(15);
+  const [adminBotDamage, setAdminBotDamage] = useState<number>(20);
+  const [adminBotStayStill, setAdminBotStayStill] = useState<boolean>(false);
   
   const [reloadProgress, setReloadProgress] = useState(100);
   const [isReloading, setIsReloading] = useState(false);
@@ -286,46 +292,47 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
 
       {/* HUD */}
       {!spectating && (
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
-          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3" title="Health">
-            <Heart className="text-cyan-400" size={20} />
-            <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
-              <div 
-                className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                style={{ width: `${Math.max(0, Math.min(100, (me.health / maxHealth) * 100))}%` }}
-              />
+        <HudDraggable id="weaponInfo">
+          <div className="flex flex-col gap-2">
+            <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3" title="Health">
+              <Heart className="text-cyan-400" size={20} />
+              <div className="w-48 h-4 bg-gray-800 rounded-full overflow-hidden border border-white/5">
+                <div 
+                  className={`h-full transition-all duration-300 ${me.health > maxHealth / 2 ? 'bg-green-500' : me.health > maxHealth / 5 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                  style={{ width: `${Math.max(0, Math.min(100, (me.health / maxHealth) * 100))}%` }}
+                />
+              </div>
             </div>
-          </div>
-          
-          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-3">
-            <div className="flex items-center gap-3 text-fuchsia-400" title="Score">
-              <Trophy size={18} />
-              <span className="font-bold text-sm">{me.score}</span>
+            
+            <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex flex-col gap-3">
+              <div className="flex items-center gap-3 text-fuchsia-400" title="Score">
+                <Trophy size={18} />
+                <span className="font-bold text-sm">{me.score}</span>
+              </div>
+              <div className="flex items-center gap-3 text-gray-400" title="Game Mode">
+                <Gamepad2 size={18} />
+                <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
+              </div>
+              {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (
+                <div className="flex items-center gap-3 text-yellow-400" title="Lives">
+                  <User size={18} />
+                  <span className="font-bold text-sm">{me.lives}</span>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-3 text-gray-400" title="Game Mode">
-              <Gamepad2 size={18} />
-              <span className="font-bold text-sm">{gameMode.toUpperCase()}</span>
+            
+            <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3 text-yellow-400" title="Weapon">
+              <Swords size={18} />
+              <span className="font-bold text-sm">{me.weapon || 'DEFAULT'}</span>
             </div>
-            {(gameMode === 'team' || (gameMode === 'custom' && customConfig?.teams)) && (
-              <div className="flex items-center gap-3 text-yellow-400" title="Lives">
-                <User size={18} />
-                <span className="font-bold text-sm">{me.lives}</span>
+
+            {(me.bleedingTicks ?? 0) > 0 && (
+              <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse flex items-center justify-center text-red-400" title="Bleeding!">
+                <Droplet size={24} />
               </div>
             )}
           </div>
-          
-          <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl flex items-center gap-3 text-yellow-400" title="Weapon">
-            <Swords size={18} />
-            <span className="font-bold text-sm">{me.weapon || 'DEFAULT'}</span>
-          </div>
-
-          {(me.bleedingTicks ?? 0) > 0 && (
-            <div className="bg-red-900/50 backdrop-blur-md border border-red-500/50 p-4 rounded-xl animate-pulse flex items-center justify-center text-red-400" title="Bleeding!">
-              <Droplet size={24} />
-            </div>
-          )}
-          
-        </div>
+        </HudDraggable>
       )}
 
       {/* Settings, Fullscreen, Admin Panel & Leave Buttons */}
@@ -407,7 +414,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
       )}
 
       {/* Right Side UI (Leaderboard & Minimap) */}
-      <div className="absolute top-4 right-4 flex flex-col gap-4">
+      <HudDraggable id="leaderboard">
         {/* Leaderboard */}
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl min-w-[150px]">
           <div className="flex items-center justify-center mb-3 border-b border-white/10 pb-2 text-white" title="Leaderboard">
@@ -427,7 +434,9 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
               ))}
           </div>
         </div>
+      </HudDraggable>
 
+      <HudDraggable id="minimap">
         {/* Minimap */}
         <div className="bg-black/50 backdrop-blur-md border border-white/10 p-3 rounded-xl flex flex-col items-center">
           <div className="relative w-[150px] h-[150px] bg-gray-900/80 border border-white/20 rounded-full overflow-hidden">
@@ -489,7 +498,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
             })()}
           </div>
         </div>
-      </div>
+      </HudDraggable>
 
       {/* Build Ramp Prompt */}
       {!isMobile && (
@@ -893,6 +902,53 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                       </div>
                     </div>
                   </div>
+
+                  <div className="bg-black/30 p-4 rounded-lg border border-white/5 mt-4">
+                    <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 block">
+                      Spawn Player Bot
+                    </label>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs text-gray-400 w-16">Speed:</span>
+                        <input 
+                          type="range" min="0" max="100" 
+                          value={adminBotSpeed} onChange={(e) => setAdminBotSpeed(parseInt(e.target.value))}
+                          className="flex-1 accent-red-500"
+                        />
+                        <span className="text-xs text-white w-8">{adminBotSpeed}</span>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs text-gray-400 w-16">Damage:</span>
+                        <input 
+                          type="range" min="0" max="200" 
+                          value={adminBotDamage} onChange={(e) => setAdminBotDamage(parseInt(e.target.value))}
+                          className="flex-1 accent-red-500"
+                        />
+                        <span className="text-xs text-white w-8">{adminBotDamage}</span>
+                      </div>
+                      <label className="flex items-center gap-2 text-white text-xs cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={adminBotStayStill}
+                          onChange={(e) => setAdminBotStayStill(e.target.checked)}
+                          className="accent-red-500 w-4 h-4"
+                        />
+                        Stay Completely Still
+                      </label>
+                      <button
+                        className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 w-full mt-2"
+                        onClick={() => {
+                          useGameStore.getState().socket?.emit('adminSpawnBot', 'PLAYER_BOT', adminTargetId, adminTargetHealth, {
+                            speed: adminBotSpeed,
+                            damage: adminBotDamage,
+                            stayStill: adminBotStayStill
+                          });
+                        }}
+                      >
+                        SPAWN PLAYER BOT
+                      </button>
+                    </div>
+                  </div>
                 </>
               )}
 
@@ -988,6 +1044,30 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                               } else {
                                 useGameStore.getState().socket?.emit('adminSetSpeed', adminTargetId, adminTargetSpeed);
                               }
+                            }}
+                            className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/50 transition-colors text-xs font-bold"
+                          >
+                            SET
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-black/30 p-4 rounded-lg border border-white/5">
+                        <label className="text-red-400 text-xs font-bold uppercase tracking-widest mb-3 flex justify-between">
+                          <span>Set Damage Multiplier</span>
+                          <span className="text-white">{adminTargetDamageMultiplier}x</span>
+                        </label>
+                        <div className="flex gap-4 items-center">
+                          <input 
+                            type="range" 
+                            min="0" max="10" step="0.1" 
+                            value={adminTargetDamageMultiplier} 
+                            onChange={(e) => setAdminTargetDamageMultiplier(parseFloat(e.target.value))}
+                            className="flex-1 accent-red-500"
+                          />
+                          <button
+                            onClick={() => {
+                              useGameStore.getState().socket?.emit('adminSetDamageMultiplier', adminTargetId, adminTargetDamageMultiplier);
                             }}
                             className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg border border-red-500/50 transition-colors text-xs font-bold"
                           >

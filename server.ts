@@ -526,21 +526,30 @@ async function startServer() {
       if (Object.keys(room.entities).length > 0) {
         const entityUpdates: any[] = [];
         for (const entity of Object.values(room.entities)) {
-          let closestPlayer: any = null;
-          let minD = Infinity;
-          for (const p of Object.values(room.players)) {
-            const d = Math.sqrt((p.x - entity.x)**2 + (p.y - entity.y)**2 + (p.z - entity.z)**2);
-            if (d < minD) {
-              minD = d;
-              closestPlayer = p;
+          let targetPlayer: any = null;
+          
+          if (entity.type === 'PLAYER_BOT' && entity.targetId && room.players[entity.targetId]) {
+            targetPlayer = room.players[entity.targetId];
+          } else {
+            let minD = Infinity;
+            for (const p of Object.values(room.players)) {
+              const d = Math.sqrt((p.x - entity.x)**2 + (p.y - entity.y)**2 + (p.z - entity.z)**2);
+              if (d < minD) {
+                minD = d;
+                targetPlayer = p;
+              }
             }
           }
 
-          if (closestPlayer) {
-            entity.targetId = closestPlayer.id;
-            const dx = closestPlayer.x - entity.x;
-            const dy = closestPlayer.y - entity.y;
-            const dz = closestPlayer.z - entity.z;
+          if (targetPlayer) {
+            // Only update targetId if it's not a PLAYER_BOT with a specific target
+            if (entity.type !== 'PLAYER_BOT' || !entity.targetId) {
+              entity.targetId = targetPlayer.id;
+            }
+            
+            const dx = targetPlayer.x - entity.x;
+            const dy = targetPlayer.y - entity.y;
+            const dz = targetPlayer.z - entity.z;
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
             
             if (entity.type === 'LIGHTBULB') {
@@ -575,7 +584,7 @@ async function startServer() {
                 if (!entity.isPreparingAttack) {
                   entity.isPreparingAttack = true;
                   entity.attackStartTime = now;
-                  entity.attackTarget = [closestPlayer.x, closestPlayer.y, closestPlayer.z];
+                  entity.attackTarget = [targetPlayer.x, targetPlayer.y, targetPlayer.z];
                   // Show warning laser
                   io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to: entity.attackTarget, color: '#ff000055' });
                 } else if (now - entity.attackStartTime > 500) {
@@ -620,11 +629,11 @@ async function startServer() {
                   entity.isPreparingAttack = false;
                   entity.lastAttack = now;
                   
-                  if (closestPlayer) {
-                    const currentDist = Math.sqrt((closestPlayer.x - entity.x)**2 + (closestPlayer.y - entity.y)**2 + (closestPlayer.z - entity.z)**2);
+                  if (targetPlayer) {
+                    const currentDist = Math.sqrt((targetPlayer.x - entity.x)**2 + (targetPlayer.y - entity.y)**2 + (targetPlayer.z - entity.z)**2);
                     if (currentDist < 5) {
                       const damage = room.difficulty === 'easy' ? 25 : room.difficulty === 'normal' ? 45 : room.difficulty === 'hard' ? 75 : 100;
-                      applyDamage(roomId, closestPlayer.id, 'entity', damage);
+                      applyDamage(roomId, targetPlayer.id, 'entity', damage);
                     }
                   }
                 }
@@ -648,8 +657,8 @@ async function startServer() {
                   entity.isPreparingAttack = false;
                   entity.lastAttack = now;
                   
-                  if (closestPlayer) {
-                    const targets = [{ x: closestPlayer.x, z: closestPlayer.z }];
+                  if (targetPlayer) {
+                    const targets = [{ x: targetPlayer.x, z: targetPlayer.z }];
                     room.activeEvent = { type: 'lava', endTime: now + 5000, targets };
                     io.to(roomId).emit('specialEvent', { type: 'lava', duration: 5000, startTime: now, targets });
                   }
@@ -675,7 +684,7 @@ async function startServer() {
                 if (!entity.isPreparingAttack) {
                   entity.isPreparingAttack = true;
                   entity.attackStartTime = now;
-                  entity.attackTarget = [closestPlayer.x, closestPlayer.y, closestPlayer.z];
+                  entity.attackTarget = [targetPlayer.x, targetPlayer.y, targetPlayer.z];
                   io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y, entity.z], to: entity.attackTarget, color: '#ff00ff55' });
                 } else if (now - entity.attackStartTime > 1500) {
                   entity.isPreparingAttack = false;
@@ -715,11 +724,11 @@ async function startServer() {
                   entity.isPreparingAttack = false;
                   entity.lastAttack = now;
                   
-                  if (closestPlayer) {
-                    const currentDist = Math.sqrt((closestPlayer.x - entity.x)**2 + (closestPlayer.y - entity.y)**2 + (closestPlayer.z - entity.z)**2);
+                  if (targetPlayer) {
+                    const currentDist = Math.sqrt((targetPlayer.x - entity.x)**2 + (targetPlayer.y - entity.y)**2 + (targetPlayer.z - entity.z)**2);
                     if (currentDist < 6) {
                       const damage = room.difficulty === 'easy' ? 40 : room.difficulty === 'normal' ? 70 : room.difficulty === 'hard' ? 100 : 150;
-                      applyDamage(roomId, closestPlayer.id, 'entity', damage);
+                      applyDamage(roomId, targetPlayer.id, 'entity', damage);
                     }
                   }
                 }
@@ -787,6 +796,41 @@ async function startServer() {
                   entity.z += (dz / dist) * speed * 0.033;
                 }
               }
+            } else if (entity.type === 'PLAYER_BOT') {
+              if (!entity.stayStill) {
+                const speed = entity.speed || 15;
+                if (dist > 5) {
+                  entity.x += (dx / dist) * speed * 0.033;
+                  entity.z += (dz / dist) * speed * 0.033;
+                  const terrainY = getTerrainHeight(entity.x, entity.z);
+                  const blockY = getHighestBlockY(room.volume, entity.x, entity.z);
+                  entity.y = Math.max(terrainY, blockY) + 0.4;
+                }
+              }
+
+              const attackCooldown = 1000;
+              if (dist < 40 && now - entity.lastAttack > attackCooldown) {
+                if (!entity.isPreparingAttack) {
+                  entity.isPreparingAttack = true;
+                  entity.attackStartTime = now;
+                  entity.attackTarget = [targetPlayer.x, targetPlayer.y, targetPlayer.z];
+                  io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y + 0.5, entity.z], to: entity.attackTarget, color: '#00ffff55' });
+                } else if (now - entity.attackStartTime > 300) {
+                  entity.isPreparingAttack = false;
+                  entity.lastAttack = now;
+                  const to = entity.attackTarget;
+                  io.to(roomId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: [entity.x, entity.y + 0.5, entity.z], to, color: '#00ffff' });
+                  
+                  for (const targetId in room.players) {
+                    if (checkHit(room.players[targetId], [entity.x, entity.y + 0.5, entity.z], to)) {
+                      const damage = entity.damage || 20;
+                      applyDamage(roomId, targetId, 'entity', damage);
+                    }
+                  }
+                }
+              } else {
+                entity.isPreparingAttack = false;
+              }
             } else if (entity.type === 'BOSS') {
               if (entity.invulnerableUntil && now < entity.invulnerableUntil) {
                 entity.y += Math.sin(now * 0.005) * 0.5;
@@ -808,7 +852,7 @@ async function startServer() {
                 if (!entity.isPreparingAttack) {
                   entity.isPreparingAttack = true;
                   entity.attackStartTime = now;
-                  entity.attackTarget = [closestPlayer.x, closestPlayer.y, closestPlayer.z];
+                  entity.attackTarget = [targetPlayer.x, targetPlayer.y, targetPlayer.z];
                   // Cycle through attack types
                   const attacks = ['SPREAD', 'BARRAGE', 'SHOCKWAVE', 'SUMMON'];
                   entity.attackType = attacks[Math.floor(Math.random() * attacks.length)];
@@ -882,13 +926,19 @@ async function startServer() {
     const shooter = room.players[shooterId];
     if (!target || target.infiniteHealth) return;
     
+    // Apply shooter's damage multiplier if they are a player
+    let actualAmount = amount;
+    if (shooter && shooter.damageMultiplier !== undefined) {
+      actualAmount = Math.floor(amount * shooter.damageMultiplier);
+    }
+    
     // Prevent friendly fire in team mode
     if ((room.mode === 'team' || (room.mode === 'custom' && room.customConfig?.teams)) && room.teams[targetId] === room.teams[shooterId] && targetId !== shooterId) {
       return;
     }
     
     const isCritical = Math.random() < 0.3;
-    const finalDamage = isCritical ? Math.floor(amount * 1.5) : amount;
+    const finalDamage = isCritical ? Math.floor(actualAmount * 1.5) : actualAmount;
     
     target.health -= finalDamage;
     target.lastAttacker = shooterId;
@@ -966,8 +1016,14 @@ async function startServer() {
       return;
     }
 
+    const shooter = room.players[shooterId];
+    let actualAmount = amount;
+    if (shooter && shooter.damageMultiplier !== undefined) {
+      actualAmount = Math.floor(amount * shooter.damageMultiplier);
+    }
+
     const isCritical = Math.random() < 0.3;
-    const finalDamage = isCritical ? Math.floor(amount * 1.5) : amount;
+    const finalDamage = isCritical ? Math.floor(actualAmount * 1.5) : actualAmount;
 
     entity.health -= finalDamage;
     
@@ -1045,7 +1101,8 @@ async function startServer() {
       weapon: spawnWeapon,
       bleedingTicks: 0,
       lastAttacker: null,
-      lives: isLateJoiner ? 0 : 1
+      lives: isLateJoiner ? 0 : 1,
+      damageMultiplier: 1
     };
 
     // Send current state to new player
@@ -1248,7 +1305,7 @@ async function startServer() {
       }
     });
 
-    socket.on('adminSpawnBot', (type, targetId, health) => {
+    socket.on('adminSpawnBot', (type, targetId, health, options) => {
       const rId = socket.data.roomId;
       const r = rooms[rId];
       const p = r.players[socket.id];
@@ -1278,6 +1335,7 @@ async function startServer() {
         else if (type === 'SWARMER') { y = Math.max(terrainY, blockY) + 10; defaultHealth = 30; }
         else if (type === 'HEALER') { y = Math.max(terrainY, blockY) + 30; defaultHealth = 120; }
         else if (type === 'BOSS') { y = Math.max(terrainY, blockY) + 10; defaultHealth = 10000; }
+        else if (type === 'PLAYER_BOT') { y = Math.max(terrainY, blockY) + 0.4; defaultHealth = 100; }
 
         r.entities[id] = {
           id,
@@ -1292,7 +1350,11 @@ async function startServer() {
           isPreparingAttack: false,
           attackStartTime: 0,
           invulnerableUntil: 0,
-          attackType: type === 'BOSS' ? 'SPREAD' : undefined
+          attackType: type === 'BOSS' ? 'SPREAD' : undefined,
+          // Custom options for PLAYER_BOT
+          speed: options?.speed,
+          damage: options?.damage,
+          stayStill: options?.stayStill
         };
         io.to(rId).emit('entitySpawned', r.entities[id]);
         if (type === 'BOSS') {
@@ -1372,6 +1434,21 @@ async function startServer() {
       if (!p || !p.isAdmin) return;
       
       io.to(targetId).emit('adminSetSpeed', speed);
+    });
+
+    socket.on('adminSetDamageMultiplier', (targetId, multiplier) => {
+      const rId = socket.data.roomId;
+      const r = rooms[rId];
+      const p = r.players[socket.id];
+      if (!p || !p.isAdmin) return;
+      
+      if (targetId === 'all') {
+        for (const tId in r.players) {
+          r.players[tId].damageMultiplier = multiplier;
+        }
+      } else if (r.players[targetId]) {
+        r.players[targetId].damageMultiplier = multiplier;
+      }
     });
 
     socket.on('adminSetHealth', (targetId, health) => {

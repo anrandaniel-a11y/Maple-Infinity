@@ -73,10 +73,13 @@ Be helpful, concise, and stay in character as a cyberpunk AI assistant.`;
       });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.1-pro-preview',
         contents: contents,
         config: {
           systemInstruction: systemInstruction,
+          thinkingConfig: {
+            thinkingLevel: 'HIGH' // Added as string to avoid breaking if enum not exported
+          }
         }
       });
 

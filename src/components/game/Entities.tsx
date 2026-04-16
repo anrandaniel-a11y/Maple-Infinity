@@ -663,6 +663,57 @@ function Boss({ entity }: { entity: any }) {
   );
 }
 
+function PlayerBot({ entity }: { entity: any }) {
+  const groupRef = useRef<THREE.Group>(null);
+  
+  useFrame(() => {
+    if (groupRef.current) {
+      groupRef.current.position.lerp(new THREE.Vector3(entity.x, entity.y, entity.z), 0.2);
+      
+      // Look at target if preparing attack
+      if (entity.isPreparingAttack && entity.attackTarget) {
+        const targetPos = new THREE.Vector3(entity.attackTarget[0], entity.attackTarget[1], entity.attackTarget[2]);
+        groupRef.current.lookAt(targetPos);
+      }
+    }
+  });
+
+  return (
+    <group ref={groupRef} position={[entity.x, entity.y, entity.z]}>
+      <Detailed distances={[0, 50, 150]}>
+        {/* High detail */}
+        <group>
+          <mesh position={[0, 0, 0]} castShadow>
+            <capsuleGeometry args={[0.4, 1.2, 8, 16]} />
+            <meshStandardMaterial color="#00ffff" roughness={0.3} metalness={0.8} />
+          </mesh>
+          {/* Visor */}
+          <mesh position={[0, 0.4, 0.35]}>
+            <boxGeometry args={[0.6, 0.2, 0.2]} />
+            <meshStandardMaterial color={entity.isPreparingAttack ? '#ff0000' : '#ffffff'} emissive={entity.isPreparingAttack ? '#ff0000' : '#ffffff'} emissiveIntensity={2} />
+          </mesh>
+        </group>
+        {/* Medium detail */}
+        <mesh position={[0, 0, 0]}>
+          <capsuleGeometry args={[0.4, 1.2, 4, 8]} />
+          <meshStandardMaterial color="#00ffff" roughness={0.5} />
+        </mesh>
+        {/* Low detail */}
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[0.8, 2, 0.8]} />
+          <meshBasicMaterial color="#00ffff" />
+        </mesh>
+      </Detailed>
+      
+      {/* Health Bar */}
+      <mesh position={[0, 1.5, 0]}>
+        <planeGeometry args={[1.5 * (entity.health / (entity.maxHealth || 100)), 0.15]} />
+        <meshBasicMaterial color={entity.health > 50 ? '#00ff00' : '#ff0000'} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
 export function Entities() {
   const entities = useGameStore((state) => state.entities);
 
@@ -687,6 +738,8 @@ export function Entities() {
           return <Healer key={entity.id} entity={entity} />;
         } else if (entity.type === 'BOSS') {
           return <Boss key={entity.id} entity={entity} />;
+        } else if (entity.type === 'PLAYER_BOT') {
+          return <PlayerBot key={entity.id} entity={entity} />;
         }
         return null;
       })}
