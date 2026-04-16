@@ -879,7 +879,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
                         />
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {['LIGHTBULB', 'DRONE', 'MECH', 'BOSS'].map(type => (
+                        {['LIGHTBULB', 'DRONE', 'MECH', 'LAVABOT', 'SNIPER', 'TANK', 'SWARMER', 'HEALER', 'BOSS'].map(type => (
                           <button
                             key={type}
                             className="text-xs font-bold text-white hover:text-red-400 py-2 px-3 bg-black/50 hover:bg-red-500/20 rounded-lg transition-colors border border-red-500/30 flex-1 min-w-[80px]"
