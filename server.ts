@@ -123,18 +123,18 @@ async function startServer() {
 
   function createRoom(mode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty: 'easy' | 'normal' | 'hard' | 'nightmare', customConfig?: CustomGameConfig): Room {
     const seed = Math.floor(Math.random() * 1000000);
-    const volume = generateVolume(seed);
+    const volume = generateVolume(seed, mode === 'pve');
     const weapons: Record<string, any> = {};
     const medkits: Record<string, any> = {};
     const numWeapons = mode === 'pve' ? 10 : 40;
     const numMedkits = mode === 'pve' ? (difficulty === 'easy' ? 15 : difficulty === 'normal' ? 8 : difficulty === 'hard' ? 4 : 2) : 5;
-    const spread = mode === 'pve' ? 100 : 1900;
+    const spread = mode === 'pve' ? 350 : 1900;
     
     for (let i = 0; i < numWeapons; i++) {
       const id = Math.random().toString(36).substring(7);
       const x = (Math.random() - 0.5) * spread;
       const z = (Math.random() - 0.5) * spread;
-      const terrainY = getTerrainHeight(x, z);
+      const terrainY = mode === 'pve' ? 0 : getTerrainHeight(x, z);
       const blockY = getHighestBlockY(volume, x, z);
       weapons[id] = {
         id,
@@ -151,7 +151,7 @@ async function startServer() {
       const id = Math.random().toString(36).substring(7);
       const x = (Math.random() - 0.5) * spread;
       const z = (Math.random() - 0.5) * spread;
-      const terrainY = getTerrainHeight(x, z);
+      const terrainY = mode === 'pve' ? 0 : getTerrainHeight(x, z);
       const blockY = getHighestBlockY(volume, x, z);
       medkits[id] = {
         id,
@@ -325,7 +325,7 @@ async function startServer() {
                 room.bossId = bossId;
                 const spawnX = 0;
                 const spawnZ = 0;
-                const terrainY = getTerrainHeight(spawnX, spawnZ);
+                const terrainY = room.mode === 'pve' ? 0 : getTerrainHeight(spawnX, spawnZ);
                 const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
                 room.entities[bossId] = {
                   id: bossId,
@@ -377,7 +377,7 @@ async function startServer() {
                   const dist = 80 + Math.random() * 20;
                   const x = Math.cos(angle) * dist;
                   const z = Math.sin(angle) * dist;
-                  const terrainY = getTerrainHeight(x, z);
+                  const terrainY = room.mode === 'pve' ? 0 : getTerrainHeight(x, z);
                   const blockY = getHighestBlockY(room.volume, x, z);
                   
                   let health = 50;
@@ -482,7 +482,7 @@ async function startServer() {
       const dist = 20 + Math.random() * 30;
       const x = boss.x + Math.cos(angle) * dist;
       const z = boss.z + Math.sin(angle) * dist;
-      const terrainY = getTerrainHeight(x, z);
+      const terrainY = room.mode === 'pve' ? 0 : getTerrainHeight(x, z);
       const blockY = getHighestBlockY(room.volume, x, z);
       room.entities[id] = {
         id,
@@ -1011,11 +1011,11 @@ async function startServer() {
     socket.data.roomId = roomId;
     const room = rooms[roomId];
 
-    const spread = mode === 'pve' ? 100 : 2000;
+    const spread = mode === 'pve' ? 350 : 2000;
 
     const spawnX = (Math.random() - 0.5) * spread;
     const spawnZ = (Math.random() - 0.5) * spread;
-    const terrainY = getTerrainHeight(spawnX, spawnZ);
+    const terrainY = mode === 'pve' ? 0 : getTerrainHeight(spawnX, spawnZ);
     const blockY = getHighestBlockY(room.volume, spawnX, spawnZ);
 
     // Initialize player
@@ -1121,11 +1121,11 @@ async function startServer() {
             }
           }
           
-          const spread = 2000;
+          const spread = (r.mode as string) === 'pve' ? 350 : 2000;
           for (const pid in r.players) {
             const spawnX = (Math.random() - 0.5) * spread;
             const spawnZ = (Math.random() - 0.5) * spread;
-            const terrainY = getTerrainHeight(spawnX, spawnZ);
+            const terrainY = (r.mode as string) === 'pve' ? 0 : getTerrainHeight(spawnX, spawnZ);
             const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
             r.players[pid].x = spawnX;
             r.players[pid].y = Math.max(terrainY, blockY) + 20;
@@ -1146,7 +1146,7 @@ async function startServer() {
           for (let i = 0; i < 15; i++) {
             const x = (Math.random() - 0.5) * spread;
             const z = (Math.random() - 0.5) * spread;
-            const terrainY = getTerrainHeight(x, z);
+            const terrainY = (r.mode as string) === 'pve' ? 0 : getTerrainHeight(x, z);
             const blockY = getHighestBlockY(r.volume, x, z);
             const y = Math.max(terrainY, blockY) + 1;
             r.weapons[Math.random().toString(36).substring(7)] = { x, y, z, type: ['SHOTGUN', 'RPG', 'REVOLVER', 'KNIFE'][Math.floor(Math.random() * 4)] };
@@ -1154,7 +1154,7 @@ async function startServer() {
           for (let i = 0; i < 10; i++) {
             const x = (Math.random() - 0.5) * spread;
             const z = (Math.random() - 0.5) * spread;
-            const terrainY = getTerrainHeight(x, z);
+            const terrainY = (r.mode as string) === 'pve' ? 0 : getTerrainHeight(x, z);
             const blockY = getHighestBlockY(r.volume, x, z);
             const y = Math.max(terrainY, blockY) + 1;
             r.medkits[Math.random().toString(36).substring(7)] = { x, y, z };
@@ -1329,7 +1329,7 @@ async function startServer() {
             target.lives = 1;
           }
           
-          const spread = r.mode === 'pve' ? 100 : 2000;
+          const spread = r.mode === 'pve' ? 350 : 2000;
           const spawnX = (Math.random() - 0.5) * spread;
           const spawnZ = (Math.random() - 0.5) * spread;
           const terrainY = getTerrainHeight(spawnX, spawnZ);
@@ -1397,30 +1397,91 @@ async function startServer() {
       const weapon = data.weapon || 'DEFAULT';
 
       if (weapon === 'RPG') {
-        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: data.to, color: '#ff8800', weapon });
-        io.to(rId).emit('explosion', { x: data.to[0], y: data.to[1], z: data.to[2], radius: 30 });
+        let explosionPoint = { x: data.to[0], y: data.to[1], z: data.to[2] };
+        let minT = 1.0;
+
+        const v = { x: data.from[0], y: data.from[1], z: data.from[2] };
+        const w = { x: data.to[0], y: data.to[1], z: data.to[2] };
+        const l2 = dist2(v, w);
+
+        if (l2 > 0) {
+          const checkIntersection = (target: any) => {
+            if (checkHit(target, data.from, data.to)) {
+              let t = ((target.x - v.x) * (w.x - v.x) + (target.y - v.y) * (w.y - v.y) + (target.z - v.z) * (w.z - v.z)) / l2;
+              t = Math.max(0, Math.min(1, t));
+              if (t < minT) minT = t;
+            }
+          };
+
+          for (const targetId in r.players) {
+            if (targetId === shooterId) continue;
+            checkIntersection(r.players[targetId]);
+          }
+          for (const targetId in r.entities) {
+            checkIntersection(r.entities[targetId]);
+          }
+        }
+        
+        if (minT < 1.0) {
+          explosionPoint = {
+            x: v.x + minT * (w.x - v.x),
+            y: v.y + minT * (w.y - v.y),
+            z: v.z + minT * (w.z - v.z)
+          };
+        }
+
+        io.to(rId).emit('laserFired', { id: Math.random().toString(36).substring(7), from: data.from, to: [explosionPoint.x, explosionPoint.y, explosionPoint.z], color: '#ff8800', weapon });
+        io.to(rId).emit('explosion', { x: explosionPoint.x, y: explosionPoint.y, z: explosionPoint.z, radius: 30 });
 
         for (const targetId in r.players) {
           if (targetId === shooterId) continue;
           const target = r.players[targetId];
-          const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
+          const dist = Math.sqrt((target.x - explosionPoint.x)**2 + (target.y - explosionPoint.y)**2 + (target.z - explosionPoint.z)**2);
           if (dist < 30) {
             const maxHealth = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
             const damage = Math.floor((maxHealth / 2) * (1 - dist/30));
             applyDamage(rId, targetId, shooterId, damage);
+            
+            // Knockback
+            const force = 12 * (1 - dist/30);
+            const dirX = (target.x - explosionPoint.x) / (dist || 1);
+            const dirY = (target.y - explosionPoint.y) / (dist || 1) + 0.5; // Upward bias
+            const dirZ = (target.z - explosionPoint.z) / (dist || 1);
+            io.to(targetId).emit('applyImpulse', { x: dirX * force, y: dirY * force, z: dirZ * force });
           }
         }
+        
+        // Also apply knockback to shooter if they are close
+        const shooterDist = Math.sqrt((shooter.x - explosionPoint.x)**2 + (shooter.y - explosionPoint.y)**2 + (shooter.z - explosionPoint.z)**2);
+        if (shooterDist < 30) {
+            const force = 12 * (1 - shooterDist/30);
+            const dirX = (shooter.x - explosionPoint.x) / (shooterDist || 1);
+            const dirY = (shooter.y - explosionPoint.y) / (shooterDist || 1) + 0.5;
+            const dirZ = (shooter.z - explosionPoint.z) / (shooterDist || 1);
+            io.to(shooterId).emit('applyImpulse', { x: dirX * force, y: dirY * force, z: dirZ * force });
+        }
+
         for (const targetId in r.entities) {
           const target = r.entities[targetId];
-          const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
+          const dist = Math.sqrt((target.x - explosionPoint.x)**2 + (target.y - explosionPoint.y)**2 + (target.z - explosionPoint.z)**2);
           if (dist < 30) {
             const damage = Math.floor(250 * (1 - dist/30));
             applyDamageToEntity(rId, targetId, shooterId, damage);
+            
+            // Knockback for bots
+            const force = 3 * (1 - dist/30);
+            const dirX = (target.x - explosionPoint.x) / (dist || 1);
+            const dirY = (target.y - explosionPoint.y) / (dist || 1) + 0.5;
+            const dirZ = (target.z - explosionPoint.z) / (dist || 1);
+            
+            target.x += dirX * force;
+            target.y += dirY * force;
+            target.z += dirZ * force;
           }
         }
         for (const targetId in r.structures) {
           const target = r.structures[targetId];
-          const dist = Math.sqrt((target.x - data.to[0])**2 + (target.y - data.to[1])**2 + (target.z - data.to[2])**2);
+          const dist = Math.sqrt((target.x - explosionPoint.x)**2 + (target.y - explosionPoint.y)**2 + (target.z - explosionPoint.z)**2);
           if (dist < 30) {
             destroyStructureAndConnected(rId, targetId);
           }
@@ -1605,10 +1666,10 @@ async function startServer() {
         p.health = r.mode === 'custom' && r.customConfig ? r.customConfig.health : (r.mode === 'speed' ? 125 : 500);
         p.bleedingTicks = 0;
         p.weapon = r.mode === 'custom' && r.customConfig ? r.customConfig.spawnWeapon : 'DEFAULT';
-        const spread = r.mode === 'pve' ? 100 : 2000;
+        const spread = r.mode === 'pve' ? 350 : 2000;
         const spawnX = (Math.random() - 0.5) * spread;
         const spawnZ = (Math.random() - 0.5) * spread;
-        const terrainY = getTerrainHeight(spawnX, spawnZ);
+        const terrainY = r.mode === 'pve' ? 0 : getTerrainHeight(spawnX, spawnZ);
         const blockY = getHighestBlockY(r.volume, spawnX, spawnZ);
         p.x = spawnX;
         p.y = Math.max(terrainY, blockY) + 20;

@@ -120,11 +120,13 @@ function LavaSpots() {
     });
   }, [seed, activeEvent?.startTime, activeEvent?.targets]);
 
+  const gameMode = useGameStore(state => state.gameMode);
+
   useEffect(() => {
-    const volume = generateVolume(seed);
+    const volume = generateVolume(seed, gameMode === 'pve');
     
     const newSpots = spots.map(spot => {
-      const terrainY = getTerrainHeight(spot.x, spot.z);
+      const terrainY = gameMode === 'pve' ? 0 : getTerrainHeight(spot.x, spot.z);
       const blockY = getHighestBlockY(volume, spot.x, spot.z);
       
       return {
@@ -134,7 +136,7 @@ function LavaSpots() {
     });
     
     setPlacedSpots(newSpots);
-  }, [spots, seed]);
+  }, [spots, seed, gameMode]);
 
   const myId = useGameStore(state => state.myId);
   const players = useGameStore(state => state.players);

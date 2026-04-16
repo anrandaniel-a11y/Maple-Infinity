@@ -28,9 +28,10 @@ export function getTerrainHeight(x: number, z: number) {
 
 let cachedVolumes: Map<number, Int32Array> = new Map();
 
-export function generateVolume(seed: number) {
-  if (cachedVolumes.has(seed)) {
-    return cachedVolumes.get(seed)!;
+export function generateVolume(seed: number, isPve: boolean = false) {
+  const cacheKey = seed + (isPve ? 1000000 : 0);
+  if (cachedVolumes.has(cacheKey)) {
+    return cachedVolumes.get(cacheKey)!;
   }
 
   const rng = seededRandom(seed);
@@ -49,6 +50,76 @@ export function generateVolume(seed: number) {
     }
     return 0;
   };
+
+  if (isPve) {
+    // PvE Map Generation
+    // Flat floor is handled by generateTerrainGeometry. We just need to add structures.
+    
+    // 1. Central Base (where players might defend)
+    const baseRadius = 12;
+    for (let x = GRID_W/2 - baseRadius; x <= GRID_W/2 + baseRadius; x++) {
+      for (let z = GRID_D/2 - baseRadius; z <= GRID_D/2 + baseRadius; z++) {
+        if ((x - GRID_W/2)**2 + (z - GRID_D/2)**2 <= baseRadius**2) {
+          // Base floor
+          setBlock(x, 0, z, 2); // Magenta
+          // Base walls
+          if ((x - GRID_W/2)**2 + (z - GRID_D/2)**2 >= (baseRadius - 1)**2) {
+            // Leave 4 openings
+            if (Math.abs(x - GRID_W/2) > 3 && Math.abs(z - GRID_D/2) > 3) {
+              for (let y = 1; y < 4; y++) {
+                setBlock(x, y, z, 1); // Cyan
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Outposts / Spawners
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const dist = 30 + rng() * 10;
+      const cx = Math.floor(GRID_W/2 + Math.cos(angle) * dist);
+      const cz = Math.floor(GRID_D/2 + Math.sin(angle) * dist);
+      const r = 4;
+      const colorIdx = Math.floor(rng() * 4) + 1;
+
+      for (let x = cx - r; x <= cx + r; x++) {
+        for (let z = cz - r; z <= cz + r; z++) {
+          if ((x - cx)**2 + (z - cz)**2 <= r**2) {
+            for (let y = 0; y < 6; y++) {
+              if (y > 3 && (x - cx)**2 + (z - cz)**2 < (r-1)**2) continue; // hollow top
+              setBlock(x, y, z, colorIdx);
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Random Cover / Walls
+    for (let i = 0; i < 30; i++) {
+      const cx = Math.floor(rng() * GRID_W);
+      const cz = Math.floor(rng() * GRID_D);
+      const w = Math.floor(rng() * 6) + 2;
+      const d = Math.floor(rng() * 6) + 2;
+      const h = Math.floor(rng() * 4) + 2;
+      const colorIdx = Math.floor(rng() * 4) + 1;
+
+      // Don't spawn inside central base
+      if ((cx - GRID_W/2)**2 + (cz - GRID_D/2)**2 < (baseRadius + 5)**2) continue;
+
+      for (let x = cx; x < cx + w; x++) {
+        for (let z = cz; z < cz + d; z++) {
+          for (let y = 0; y < h; y++) {
+            setBlock(x, y, z, colorIdx);
+          }
+        }
+      }
+    }
+
+    cachedVolumes.set(cacheKey, volume);
+    return volume;
+  }
 
   // 1. Central Arena / Base
   const arenaRadius = 8;
@@ -327,7 +398,7 @@ export function generateVolume(seed: number) {
     }
   }
 
-  cachedVolumes.set(seed, volume);
+  cachedVolumes.set(cacheKey, volume);
   // Prevent memory leak by keeping only the last 10 seeds
   if (cachedVolumes.size > 10) {
     const firstKey = cachedVolumes.keys().next().value;

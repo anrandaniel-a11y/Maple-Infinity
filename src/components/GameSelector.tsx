@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Crosshair, ShieldAlert, Users, Zap, Play, ChevronLeft, Skull, Shield, ShieldHalf, Flame, Settings } from 'lucide-react';
 import { DynamicBackground } from './DynamicBackground';
+import { Chatbot } from './game/Chatbot';
 
 interface GameSelectorProps {
   onSelectMode: (mode: 'pvp' | 'pve' | 'team' | 'speed' | 'custom', difficulty?: 'easy' | 'normal' | 'hard' | 'nightmare') => void;
@@ -13,8 +14,25 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
   const [showDifficulty, setShowDifficulty] = useState(false);
   const [showCustomConfig, setShowCustomConfig] = useState(false);
   const [customActive, setCustomActive] = useState(false);
-  const [activeTab, setActiveTab] = useState<'games' | 'about' | 'admin'>('games');
+  const [activeTab, setActiveTab] = useState<'games' | 'about' | 'admin' | 'ai'>('games');
   const [pointsData, setPointsData] = useState<Record<string, number>>({});
+  const [randomSelection, setRandomSelection] = useState<string | null>(null);
+
+  const handleRandomMode = () => {
+    const modes = ['pvp', 'pve', 'team', 'speed'];
+    const randomMode = modes[Math.floor(Math.random() * modes.length)];
+    setRandomSelection(randomMode);
+    
+    setTimeout(() => {
+      if (randomMode === 'pve') {
+        const difficulties = ['easy', 'normal', 'hard', 'nightmare'];
+        const randomDiff = difficulties[Math.floor(Math.random() * difficulties.length)];
+        onSelectMode('pve', randomDiff as any);
+      } else {
+        onSelectMode(randomMode as any);
+      }
+    }, 1500);
+  };
   
   const [customConfig, setCustomConfig] = useState({
     teams: false,
@@ -92,6 +110,16 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
         >
           About
         </button>
+        <button
+          onClick={() => setActiveTab('ai')}
+          className={`px-8 py-3 rounded-xl font-bold uppercase tracking-widest transition-all duration-300 ${
+            activeTab === 'ai' 
+              ? 'bg-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]' 
+              : 'bg-black/50 text-purple-500 border border-purple-500/30 hover:border-purple-400'
+          }`}
+        >
+          Maple AI
+        </button>
         {isAdmin && (
           <button
             onClick={() => setActiveTab('admin')}
@@ -108,8 +136,14 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
 
       {activeTab === 'games' ? (
         <div className="z-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 max-w-[1400px] w-full">
-          {/* Player Points Display */}
-          <div className="col-span-full mb-4 flex justify-end">
+          {/* Player Points Display and Random Button */}
+          <div className="col-span-full mb-4 flex justify-between items-center">
+            <button
+              onClick={handleRandomMode}
+              className="px-6 py-3 rounded-xl bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 border border-blue-500/50 font-bold uppercase tracking-widest transition-all duration-300 flex items-center gap-2"
+            >
+              <Zap className="w-5 h-5" /> Random Gamemode
+            </button>
             <div className="bg-black/50 border border-cyan-500/30 rounded-xl px-6 py-3 backdrop-blur-md flex items-center gap-3">
               <span className="text-cyan-200 uppercase tracking-widest text-sm font-bold">Your Points:</span>
               <span className="text-2xl font-black text-cyan-400 font-mono">{pointsData[nickname] || 0}</span>
@@ -121,7 +155,7 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.2 }}
-          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-cyan-500/30 backdrop-blur-md hover:border-cyan-400 transition-all duration-500"
+          className={`group relative rounded-3xl overflow-hidden bg-black/50 border ${randomSelection === 'pvp' ? 'border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'border-cyan-500/30 hover:border-cyan-400'} backdrop-blur-md transition-all duration-500`}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
           <img 
@@ -166,7 +200,7 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.4 }}
-          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-fuchsia-500/30 backdrop-blur-md hover:border-fuchsia-400 transition-all duration-500"
+          className={`group relative rounded-3xl overflow-hidden bg-black/50 border ${randomSelection === 'pve' ? 'border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'border-fuchsia-500/30 hover:border-fuchsia-400'} backdrop-blur-md transition-all duration-500`}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
           <img 
@@ -306,7 +340,7 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.6 }}
-          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-blue-500/30 backdrop-blur-md hover:border-blue-400 transition-all duration-500"
+          className={`group relative rounded-3xl overflow-hidden bg-black/50 border ${randomSelection === 'team' ? 'border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'border-blue-500/30 hover:border-blue-400'} backdrop-blur-md transition-all duration-500`}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
           <img 
@@ -351,7 +385,7 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.8 }}
-          className="group relative rounded-3xl overflow-hidden bg-black/50 border border-yellow-500/30 backdrop-blur-md hover:border-yellow-400 transition-all duration-500"
+          className={`group relative rounded-3xl overflow-hidden bg-black/50 border ${randomSelection === 'speed' ? 'border-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.8)]' : 'border-yellow-500/30 hover:border-yellow-400'} backdrop-blur-md transition-all duration-500`}
         >
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/50 to-black z-10" />
           <img 
@@ -632,6 +666,14 @@ export function GameSelector({ onSelectMode, nickname, isAdmin }: GameSelectorPr
               </form>
             </div>
           </div>
+        </motion.div>
+      ) : activeTab === 'ai' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="z-10 max-w-4xl w-full"
+        >
+          <Chatbot inline={true} />
         </motion.div>
       ) : (
         <motion.div

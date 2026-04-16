@@ -363,9 +363,16 @@ export function LocalPlayer({ isMobile }: { isMobile: boolean }) {
         bodyRef.current?.setLinvel({ x: 0, y: 0, z: 0 }, true);
       }
     };
+    const handleApplyImpulse = (impulse: { x: number, y: number, z: number }) => {
+      if (bodyRef.current) {
+        bodyRef.current.applyImpulse(impulse, true);
+      }
+    };
     socket.on('playerRespawned', handleRespawn);
+    socket.on('applyImpulse', handleApplyImpulse);
     return () => {
       socket.off('playerRespawned', handleRespawn);
+      socket.off('applyImpulse', handleApplyImpulse);
     };
   }, [socket, myId]);
 

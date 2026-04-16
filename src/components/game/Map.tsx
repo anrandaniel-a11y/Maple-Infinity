@@ -20,26 +20,26 @@ export function Map() {
         <group>
           {/* PvE Boundary Walls */}
           <RigidBody type="fixed">
-            <mesh position={[0, 50, 60]}>
-              <boxGeometry args={[120, 100, 2]} />
+            <mesh position={[0, 50, 200]}>
+              <boxGeometry args={[400, 100, 2]} />
               <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
-            <mesh position={[0, 50, -60]}>
-              <boxGeometry args={[120, 100, 2]} />
+            <mesh position={[0, 50, -200]}>
+              <boxGeometry args={[400, 100, 2]} />
               <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
-            <mesh position={[60, 50, 0]}>
-              <boxGeometry args={[2, 100, 120]} />
+            <mesh position={[200, 50, 0]}>
+              <boxGeometry args={[2, 100, 400]} />
               <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
           <RigidBody type="fixed">
-            <mesh position={[-60, 50, 0]}>
-              <boxGeometry args={[2, 100, 120]} />
+            <mesh position={[-200, 50, 0]}>
+              <boxGeometry args={[2, 100, 400]} />
               <meshBasicMaterial color="#ff0000" transparent opacity={0.2} />
             </mesh>
           </RigidBody>
@@ -218,7 +218,7 @@ function Explosion({ position, radius }: { position: [number, number, number], r
   );
 }
 
-const generateTerrainGeometry = () => {
+const generateTerrainGeometry = (isPve: boolean = false) => {
   const size = 2000;
   const segments = 128; // Optimized from 128
   const geo = new THREE.PlaneGeometry(size, size, segments, segments);
@@ -232,7 +232,7 @@ const generateTerrainGeometry = () => {
     const x = pos.getX(i);
     const z = pos.getZ(i);
     
-    const y = getTerrainHeight(x, z);
+    const y = isPve ? 0 : getTerrainHeight(x, z);
 
     pos.setY(i, y);
     
@@ -253,10 +253,12 @@ const generateTerrainGeometry = () => {
   return geo;
 };
 
-const GLOBAL_TERRAIN_GEOMETRY = generateTerrainGeometry();
+const GLOBAL_TERRAIN_GEOMETRY = generateTerrainGeometry(false);
+const PVE_TERRAIN_GEOMETRY = generateTerrainGeometry(true);
 
 function Terrain() {
-  const geometry = GLOBAL_TERRAIN_GEOMETRY;
+  const gameMode = useGameStore((state) => state.gameMode);
+  const geometry = gameMode === 'pve' ? PVE_TERRAIN_GEOMETRY : GLOBAL_TERRAIN_GEOMETRY;
   const enableLighting = useGameStore((state) => state.enableLighting);
 
   return (
@@ -361,8 +363,8 @@ const generateFaceCulledGeometry = (volume: Int32Array, cx: number, cz: number, 
   return { geometry: geo };
 };
 
-const generateChunks = (seed: number) => {
-  const volume = generateVolume(seed);
+const generateChunks = (seed: number, isPve: boolean = false) => {
+  const volume = generateVolume(seed, isPve);
   
   const getIdx = (x: number, y: number, z: number) => x + y * GRID_W + z * GRID_W * GRID_H;
   
@@ -477,7 +479,8 @@ const generateChunks = (seed: number) => {
 
 function RandomObstacles() {
   const seed = useGameStore((state) => state.seed);
-  const chunks = useMemo(() => generateChunks(seed), [seed]);
+  const gameMode = useGameStore((state) => state.gameMode);
+  const chunks = useMemo(() => generateChunks(seed, gameMode === 'pve'), [seed, gameMode]);
 
   return (
     <group>

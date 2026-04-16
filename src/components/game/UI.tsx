@@ -1,9 +1,10 @@
 import { useGameStore, defaultMobileControls } from '../../store/gameStore';
 import { Joystick } from 'react-joystick-component';
-import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar, LogOut } from 'lucide-react';
+import { Crosshair, Zap, ShieldAlert, ChevronDown, ChevronUp, Settings, X, Maximize, Minimize, Heart, Trophy, Gamepad2, User, Swords, Droplet, ListOrdered, Radar, LogOut, HelpCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { playSound } from '../../utils/audio';
 import { MobileControls } from './MobileControls';
+import { Chatbot } from './Chatbot';
 
 export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: boolean, onExit?: () => void }) {
   const myId = useGameStore((state) => state.myId);
@@ -37,6 +38,7 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
   const customConfig = useGameStore((state) => state.customConfig);
   const [adminOpen, setAdminOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatbotOpen, setChatbotOpen] = useState(false);
   const isCustomizingControls = useGameStore((state) => state.isCustomizingControls);
   const setIsCustomizingControls = useGameStore((state) => state.setIsCustomizingControls);
   const [settingsTab, setSettingsTab] = useState<'gameplay' | 'graphics'>('gameplay');
@@ -552,12 +554,21 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
           >
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-2xl font-black text-cyan-400 uppercase tracking-widest">Settings</h2>
-              <button 
-                onClick={() => setSettingsOpen(false)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                <X size={24} />
-              </button>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setChatbotOpen(true)}
+                  className="text-fuchsia-400 hover:text-fuchsia-300 transition-colors flex items-center gap-1"
+                  title="Ask AI Assistant"
+                >
+                  <HelpCircle size={24} />
+                </button>
+                <button 
+                  onClick={() => setSettingsOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2 mb-6 border-b border-white/10 pb-2">
@@ -1054,6 +1065,8 @@ export function UI({ isMobile, isAdmin, onExit }: { isMobile: boolean, isAdmin: 
           </div>
         </div>
       )}
+
+      {chatbotOpen && <Chatbot onClose={() => setChatbotOpen(false)} />}
     </div>
   );
 }
